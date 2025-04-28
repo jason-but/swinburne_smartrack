@@ -29,7 +29,12 @@ class SmartRack:
     """
     def __init__(self, console: rich.console.Console, rooms: dict[str, dict[str, str]]):
         """
-        Construct the SmartRack class
+        Construct the SmartRack class instance.
+
+        Creates a logger for the SmartRack class, and initialises all the class internal variables.
+
+        After creation, use Class methods to access the SmartRack servers.
+
         :param console: The application instance of the Rich Console class
         :param rooms: Information about SmartRack servers maps room short-name to dictionary item mapping 'description' to long-name and 'url' to server URL
         """
@@ -118,7 +123,12 @@ class SmartRack:
 
     def fetch_booked_devices(self, title: str) -> None:
         """
-        Download all booked devices for all selected rooms, store all connection details in self.__devices
+        Download all booked devices for all selected rooms, store all connection details in self.__devices.
+
+        Method will ask user for authentication details via a dialog box prior to connecting to SmartRack servers.
+
+        Progress will be displayed to the console, logging is provided via the logger.
+
         :param title: Title to display at top of dialog box requesting authentication information
         """
         self._ask_auth_details(title)
@@ -176,7 +186,15 @@ class SmartRack:
 
                 self.__console.print(f'Retrieved {len(split_response)} devices for {room}')
 
-            # pprint.pprint(self.__devices)
+    def filter(self, enclosures: list[str] = ['Black', 'Red', 'Blue', 'Green', 'Yellow'], kits: list[str] = ['Yellow', 'Green', 'Orange', 'Purple', 'White'], devices: list[str] = ['Switch 1', 'Switch 2', 'Switch 3', 'Switch 4', 'Router 1', 'Router 2', 'Router 3', 'Router 4']) -> dict[str, dict[str, str]]:
+        """
+
+        :param enclosures: List of strings of Enclosures we are interested in
+        :param kits: List of strings of Kits we are interested in
+        :param devices: List of strings of Devices we are interested in
+        :return:
+        """
+        return {key: value for key, value in self.__devices.items() if value['enclosure'] in enclosures and value['kit'] in kits and value['device'] in devices}
 
     def filter_nickname(self, match: list[str]) -> dict[str, dict[str, str]]:
         """
@@ -188,6 +206,7 @@ class SmartRack:
         return {key: value for key, value in self.__devices.items() if value['nickname'] in match}
 
 
+# Execute test/validation suite if run as python -m swinburne_smartrack.smartrack
 if __name__ == '__main__':
     atc_servers = {'ATC328': {'description': 'Cisco Devices in ATC328',
                               'url': 'https://ictencsvr2.ict.swin.edu.au/agent/get_all.php'
@@ -206,7 +225,11 @@ if __name__ == '__main__':
                                          formatter_class=argparse.RawTextHelpFormatter,
                                          allow_abbrev=False
                                          )
-        parser.add_argument('-d', '--debug', default='INFO', choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'], help='Set logging level')
+        parser.add_argument('-d', '--debug',
+                            default='INFO',
+                            choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
+                            help='Set logging level (default: %(default)s)'
+                            )
         arguments = parser.parse_args()
 
         # Create the Rich Console and Rich Logger
@@ -228,7 +251,25 @@ if __name__ == '__main__':
         # Download booked devices
         test.fetch_booked_devices(' ATC Website Authentication Information ')
 
+        # Retrieve list (no filter, get all devices)
+        result = test.filter()
+
+        # Display all devices in table
+        logger.info('Displaying booked device details')
+        from rich.table import Table
+        table = Table(show_header=True, header_style="bold green", title="Booked Devices", show_lines=True)
+        table.add_column("Room", style="green")
+        table.add_column("Device", style="green")
+        table.add_column("Server", style="cyan")
+        table.add_column("Username", style="cyan")
+        table.add_column("Password", style="red")
+
+        for details in result.values():
+            table.add_row(details['room'], details['fullname'], details['server'], details['username'], details['password'])
+
+        console.print(table)
+
     except KeyboardInterrupt as err:
         pass
-    except Exception as err:
+    except (Exception,):
         rich.console.Console().print_exception()
