@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swinburne-smartrack"
-version = "0.0.1"
+version = "0.0.2"
 authors = [
   { name="Jason But", email="jbut@swin.edu.au" },
 ]
@@ -17,7 +17,7 @@ classifiers = [
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
-dependencies = ["logging", "pythondialog", "requests", "rich"]
+dependencies = ["logging", "paramiko", "pythondialog", "requests", "rich"]
 
 #[project.scripts]
 #test-lib = "test:main"
