@@ -22,6 +22,10 @@ import rich.console
 import dialog
 import requests
 
+# Library modules
+# config.config - SmartRack system configuration (as loaded from config TOML file)
+from .config import config
+
 
 class SmartRack:
     """
@@ -208,16 +212,6 @@ class SmartRack:
 
 # Execute test/validation suite if run as python -m swinburne_smartrack.smartrack
 if __name__ == '__main__':
-    atc_servers = {'ATC328': {'description': 'Cisco Devices in ATC328',
-                              'url': 'https://ictencsvr2.ict.swin.edu.au/agent/get_all.php'
-                              },
-                   'ATC329': {'description': 'Cisco Devices in ATC329',
-                              'url': 'https://ictencsvr6.ict.swin.edu.au/agent/get_all.php'
-                              },
-                   'ATC330': {'description': 'Cisco Devices in ATC329',
-                              'url': 'https://ictencsvr11.ict.swin.edu.au/agent/get_all.php'
-                              }
-                   }
     try:
         # Create argparse instance and parse command line parameters
         import argparse
@@ -243,10 +237,10 @@ if __name__ == '__main__':
         logger = logging.getLogger('')
 
         # Create SmartRack instance
-        test = SmartRack(console, atc_servers)
+        test = SmartRack(console, config['smartrack_servers'])
 
         # Ask user to select rooms
-        test.select_smartrack_rooms(' ATC Room Selection ', 'Please select which rooms you would like to upload device configurations to')
+        test.select_smartrack_rooms(' ATC Room Selection ', 'Please select which rooms you would like to test this library with')
 
         # Download booked devices
         test.fetch_booked_devices(' ATC Website Authentication Information ')
