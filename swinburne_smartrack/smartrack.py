@@ -24,7 +24,7 @@ import requests
 
 # Library modules
 # config.config - SmartRack system configuration (as loaded from config TOML file)
-from .config import config
+from .config import Configuration
 
 
 class SmartRack:
@@ -219,6 +219,9 @@ if __name__ == '__main__':
                                          formatter_class=argparse.RawTextHelpFormatter,
                                          allow_abbrev=False
                                          )
+        parser.add_argument('-c', '--config-file',
+                            help='Specify the smartrack configuration file (default: system configuration)'
+                            )
         parser.add_argument('-d', '--debug',
                             default='INFO',
                             choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
@@ -236,8 +239,9 @@ if __name__ == '__main__':
 
         logger = logging.getLogger('')
 
+        config = Configuration()
         # Create SmartRack instance
-        test = SmartRack(console, config['smartrack_servers'])
+        test = SmartRack(console, config.smartrack_servers)
 
         # Ask user to select rooms
         test.select_smartrack_rooms(' ATC Room Selection ', 'Please select which rooms you would like to test this library with')

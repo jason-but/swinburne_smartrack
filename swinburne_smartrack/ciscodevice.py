@@ -31,7 +31,7 @@ class CiscoDevice:
     """
 
     prompts = {'>': 'ena\r\n',
-               'Would you like to enter the initial configuration dialog? [yes/no]:': 'no\r\n',
+               'Would you like to enter the initial configuration dialog? [yes/no]: ': 'no\r\n',
                'Would you like to terminate autoinstall? [yes]:': 'yes\r\n',
                'Press RETURN to get started!': '\r\n',
                'tcl)#': 'exit\r\n',

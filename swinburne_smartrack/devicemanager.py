@@ -19,7 +19,7 @@ import logging
 # Library modules
 # config.config - SmartRack system configuration (as loaded from config TOML file)
 # ciscodevice.CiscoDevice - Manages interaction with remote Cisco Device
-from .config import config
+from .config import Configuration
 from .ciscodevice import CiscoDevice
 
 
@@ -39,13 +39,13 @@ class DeviceManager:
         self.__log.debug(f'Constructing Class')
 
         # Validate parameters
-        if type not in config['manage']:
+        if type not in Configuration().manage:
             raise ValueError(f'DeviceManager: type {type} is not supported')
 
         # Store device connection, device type, and all commands related to managing this device type
         self.__device = device
         self.__type = type
-        self.__manage: dict[str, list[str]] = config['manage'][type]
+        self.__manage: dict[str, list[str]] = Configuration().manage[type]
 
     ##########
     # PRIVATE METHODS
@@ -72,7 +72,9 @@ class DeviceManager:
 
         This method manages all the initialisation and must be called prior to running any of the following methods.
         """
+        self.__log.info(f'Establishing connection to {self.__type}')
         self.__device.connect()
+        self.__log.info(f'Setting device to enable mode')
         self.__device.set_enable_mode([], [])
 
     def collect(self, out_dir: str = '.') -> None:
@@ -117,6 +119,9 @@ if __name__ == '__main__':
                                          formatter_class=argparse.RawTextHelpFormatter,
                                          allow_abbrev=False
                                          )
+        parser.add_argument('-c', '--config-file',
+                            help='Specify the smartrack configuration file (default: system configuration)'
+                            )
         parser.add_argument('-d', '--debug',
                             default='INFO',
                             choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
@@ -131,6 +136,8 @@ if __name__ == '__main__':
         # Create the Rich Console and Rich Logger
         import rich.logging
         import rich.console
+
+        if arguments.config_file: Configuration(arguments.config_file)
 
         console = rich.console.Console()
         logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
