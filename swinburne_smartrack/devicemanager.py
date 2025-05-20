@@ -15,6 +15,9 @@ Running the module directly will run a test suite allowing verification of funct
 # logging - Python logging module
 import os
 import logging
+import logging.handlers
+import multiprocessing
+from typing import Any
 
 # Library modules
 # config.config - SmartRack system configuration (as loaded from config TOML file)
@@ -23,8 +26,8 @@ from .config import Configuration
 from .ciscodevice import CiscoDevice
 
 
-class DeviceManager:
-    def __init__(self, device: CiscoDevice, type: str):
+class DeviceManager(multiprocessing.Process):
+    def __init__(self, device: CiscoDevice, type: str, update_queue: multiprocessing.Queue, log_queue: multiprocessing.Queue):
         """
         This class manages a device connection and corresponding commands related to the specific type of the device.
         It validates the type of the device upon instantiation to ensure compatibility with the management configuration.
@@ -34,8 +37,14 @@ class DeviceManager:
 
         :raises ValueError: If the device type does not exist in the SmartRack configuration file.
         """
+        super().__init__()
+        # Store multiprocessing queue variables
+        self.__update_queue = update_queue
+        self.__log_queue = log_queue
+
         # Establish logger for SmartRack class
         self.__log = logging.getLogger('DeviceManager')
+        self.__log.addHandler(logging.handlers.QueueHandler(log_queue))
         self.__log.debug(f'Constructing Class')
 
         # Validate parameters
@@ -46,6 +55,7 @@ class DeviceManager:
         self.__device = device
         self.__type = type
         self.__manage: dict[str, list[str]] = Configuration().manage[type]
+        self.__actions: dict[str, Any] = {}
 
     ##########
     # PRIVATE METHODS
@@ -66,7 +76,7 @@ class DeviceManager:
     ##########
     # PUBLIC METHODS
     ##########
-    def establish_connection(self) -> None:
+    def _establish_connection(self) -> None:
         """
         Establishes a connection with the device and configures it to the enable mode.
 
@@ -77,15 +87,32 @@ class DeviceManager:
         self.__log.info(f'Setting device to enable mode')
         self.__device.set_enable_mode([], [])
 
+    def register_action(self, action: str, *args, **kwargs) -> None:
+        """
+        Registers an action with its corresponding method and arguments into the internal actions registry.
+        When the process is running, and after the connection is established in enable mode, all registered methods
+        will be executed in turn with the parameters provided here.
+
+        :param action: The name of the method in the class to be registered.
+        :param args: Positional arguments required by the action method.
+        :param kwargs: Keyword arguments required by the action method.
+        """
+        self.__log.info(f'Registering action: {action}(args={args}, kwargs={kwargs})')
+        self.__actions[action] = {'method': getattr(self, action), 'args': args, 'kwargs': kwargs}
+
     def collect(self, out_dir: str = '.') -> None:
         """
         Collects configurations from the device by executing pre-defined commands and saving the
         output into specified files within the given output directory.
 
+        NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
+
         :param out_dir: The directory where configuration command outputs will be saved. If the
             directory does not exist, it will be created. Defaults to the current directory.
         """
+        self.__update_queue.put({'task': 'collect', 'message': f'Collecting configurations for {self.name}'})
         self.__log.info(f'Collecting configurations')
+
         self.__log.debug(f'Creating output directory {out_dir}')
         os.makedirs(out_dir, exist_ok=True)
 
@@ -98,16 +125,39 @@ class DeviceManager:
     def erase(self) -> None:
         """
         Erases the configuration on the Cisco Device by sending a set of predefined commands.
+
+        NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
         """
+        self.__update_queue.put({'task': 'erase', 'message': f'Erasing stored configurations for {self.name}'})
         self.__log.info(f'Erasing {self.__type}')
         self._send_commands(self.__manage['erase'])
 
     def restart(self) -> None:
         """
         Restarts the Cisco Device by sending a set of predefined commands.
+
+        NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
         """
+        self.__update_queue.put({'task': 'restart', 'message': f'Erasing stored configurations for {self.name}'})
         self.__log.info(f'Restarting {self.__type}')
         self._send_commands(self.__manage['restart'])
+
+    def run(self) -> None:
+        # Connect to device and update status
+        self.__log.info(f'Establishing connection to {self.__type}')
+        self.__device.connect()
+        self.__update_queue.put({'task': 'connected', 'message': f'Connected to {self.name}'})
+
+        # Set device to enable mode and update status
+        self.__log.info(f'Setting device to enable mode')
+        self.__device.set_enable_mode([], [])
+        self.__update_queue.put({'task': 'enable', 'message': f'{self.name} now in "enable" mode'})
+
+        for action in self.__actions.values():
+            self.__log.info(f'Executing action: {action["method"].__name__}')
+            action['method'](*action['args'], **action['kwargs'])
+
+        self.__update_queue.put({'task': 'finish', 'message': f'Finished all tasks for {self.name}'})
 
 
 if __name__ == '__main__':
@@ -147,11 +197,17 @@ if __name__ == '__main__':
 
         logger = logging.getLogger('')
 
-        # Create the Cisco Device, set it to enable mode, and capture/print output of "show ip int brief"
-        manager = DeviceManager(CiscoDevice(arguments.hostname, arguments.username, arguments.password, arguments.port), 'router')
+        # This queue holds log messages from the worker threads
+        log_queue = multiprocessing.Queue(-1)
 
-        manager.establish_connection()
-        manager.collect('test_collect')
+        # This queue holds status updates from the worker threads
+        progress_queue = multiprocessing.Queue()  # Queue used for reporting progress
+
+        # Create the Cisco Device, set it to enable mode, and capture/print output of "show ip int brief"
+        manager = DeviceManager(CiscoDevice(arguments.hostname, arguments.username, arguments.password, arguments.port), 'router', progress_queue, log_queue)
+
+        manager.register_action('collect')
+        manager.run()
 
     except KeyboardInterrupt as err:
         pass
