@@ -9,9 +9,15 @@ import re
 import logging
 
 import dialog
+import multiprocessing
+from time import time
 
+# Import swinburne_smartrack sub-modules
 from .config import Configuration
+from .devicemanager import DeviceManager
+from .ciscodevice import CiscoDevice
 from .smartrack import SmartRack
+
 import rich.console
 from rich.table import Table
 from rich.panel import Panel
@@ -209,7 +215,44 @@ def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
 
 
 def devicemanager(arguments: argparse.Namespace, console: rich.console) -> None:
-    pass
+    # This queue holds log messages from the worker tasks
+    log_queue = multiprocessing.Queue(-1)
+
+    # This queue holds status updates from the worker tasks
+    progress_queue = multiprocessing.Queue()
+
+    process = DeviceManager(CiscoDevice(arguments.hostname, arguments.username, arguments.password, arguments.port),
+                            'router',
+                            progress_queue,
+                            log_queue)
+
+    process.register_action('collect', output_dir='test_output')
+
+    # Test the CiscoDevice class, connect to device, put in enable mode, configure a Loopback interface
+    import rich.logging
+    logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
+                        handlers=[rich.logging.RichHandler(markup=True, console=console)],
+                        level=getattr(logging, arguments.debug)
+                        )
+
+    logger = logging.getLogger('')
+
+    logger.info(f'Starting DeviceManager')
+    process.start()
+
+    while process.is_alive():
+        # Process messages regarding progress from the sub-process
+        if not progress_queue.empty():
+            message, stage = progress_queue.get()
+            console.print(f'[{stage}] {message}')
+
+        while not log_queue.empty():
+            record = log_queue.get()
+            logger.handle(record)
+
+    logger.info('Process clean-up via join()')
+    process.join()
+    logger.info(f'DeviceManager has terminated')
 
 
 def parse_arguments() -> argparse.Namespace:
