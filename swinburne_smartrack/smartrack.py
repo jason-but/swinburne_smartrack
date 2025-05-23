@@ -62,7 +62,6 @@ class SmartRack:
 
         Progress will be displayed to the console, logging is provided via the logger.
 
-        :param title: Title to display at top of dialog box requesting authentication information
         """
         with self.__console.status('[magenta]Downloading SmartRack booked devices', spinner='earth'):
             for room in selected_rooms:

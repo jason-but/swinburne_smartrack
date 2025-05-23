@@ -10,92 +10,25 @@ import logging
 import dialog
 import multiprocessing
 
+from swinburne_smartrack import MultiDeviceManager
 # Import swinburne_smartrack submodules
 from .config import Configuration
 from .devicemanager import DeviceManager, DeviceActionCompleteEnum
 from .ciscodevice import CiscoDevice
 from .smartrack import SmartRack
+from .smartracktui import SmartRackTUI
 
 import rich.console
 import rich.logging
 from rich.table import Table
 from rich.panel import Panel
-from rich.pretty import Pretty
 
 # TODO: Clean up imports
-# TODO: Add parser for devicemanager and "all"
-# TODO: Re-write smartrack test command to extract UI from SmartRack class
+# TODO: Add  "all"
 # TODO: Think about how logging is handled in this file
 
 
 def smartrack(arguments: argparse.Namespace, console: rich.console) -> None:
-    def confirm_termination(title: str) -> None:
-        """
-        Ask the user if they wish to terminate the test suite, if so print message to screen and terminate, otherwise return.
-
-        :param title: Namespace object containing parsed command-line
-                          arguments for the application.
-        """
-        if __dialog.yesno('Are you sure that you want to terminate application?', title=title) == __dialog.OK:
-            console.clear()
-            console.print(Panel('Terminating SmartRack Web Site Test Suite', style='bold red'))
-            exit(0)
-
-    def select_servers(title: str, instructions: str) -> list[str]:
-        """
-        Select one or more servers from a checklist dialog.
-
-        This function presents a checklist dialog box to the user, allowing them to select one or more servers from the list in the
-        system SmartRack configuration file. It loops until the user makes a valid selection or confirms quitting. If the user selects OK, but no
-        servers are chosen, an error message is displayed, prompting them to try again.
-
-        :param title: The title to display at the top of the checklist dialog.
-        :param instructions: Instructions displayed to the user in the checklist dialog.
-        :return: A list of server identifiers chosen by the user.
-        """
-        # Loop forever asking user to select room, when one or more rooms are selected, break out of loop
-        while True:
-            # Display message box
-            code, selected_rooms = __dialog.checklist(instructions,
-                                                      choices=[(key, value['description'], False) for key, value in Configuration().smartrack_servers.items()],
-                                                      title=title,
-                                                      cancel_label='Quit'
-                                                      )
-
-            if code == __dialog.OK:
-                # User selected OK, if at least one room is selected break out of loop, otherwise display error message and try again
-                if len(selected_rooms) > 0: return selected_rooms
-                __dialog.msgbox('ERROR: You must select at least one room', title=title)
-            else:
-                # User selected QUIT, confirm termination (will raise exception if user confirms, otherwise continue and try again)
-                confirm_termination(title)
-
-    def ask_auth_details(title: str) -> dict[str, str]:
-        """
-        Prompt the user to input authentication details for SmartRack. The function displays a dialog box for the user to input a username
-        and password, the password field is hidden The dialog allows the user to quit. If "Quit" is selected, the function will
-        confirm termination of the test.
-
-        :param title: The title displayed on the authentication dialog box.
-        :return: A dictionary containing the username and password provided by the user, with keys `'username'` and `'password'` respectively.
-        """
-        while True:
-            # Display password entry box, each tuple in elements is:
-            #  field label, label y pos, label x pos, initial field value, field y pos, field x pos, field length, input length, 0=plaintext/1=hidden
-            code, values = __dialog.mixedform('Enter SmartRack Authentication details below:\n',
-                                              title=title,
-                                              elements=[("Username:", 2, 2, "", 2, 15, 50, 50, 0),
-                                                        ("Password:", 4, 2, "", 4, 15, 50, 50, 1)],
-                                              cancel_label='Quit',
-                                              insecure=True
-                                              )
-
-            if code == __dialog.OK: return {'username': values[0], 'password': values[1]}
-
-            # User selected QUIT, confirm termination (will raise exception if user confirms, otherwise continue and try again)
-            confirm_termination(title)
-
-    # Actual function starts here
     logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
                         handlers=[rich.logging.RichHandler(markup=True, console=console)],
                         level=getattr(logging, arguments.debug)
@@ -103,22 +36,13 @@ def smartrack(arguments: argparse.Namespace, console: rich.console) -> None:
 
     logger = logging.getLogger('')
 
-    __dialog = dialog.Dialog(dialog='dialog')
-    servers = select_servers(' ATC Room Selection ', 'Please select which rooms you would like to test this library with')
-    smartrack = SmartRack(console, Configuration().smartrack_servers)
-
-    while True:
-        try:
-            auth_details = ask_auth_details(' ATC Website Authentication Information ')
-
-            console.clear()
-            console.print(Panel('SmartRack Web Site Test Suite', style='bold green'))
-            console.print()
-            console.rule('Retrieving Booked Devices from SmartRack Website')
-            smartrack.fetch_booked_devices(servers, auth_details)
-            break
-        except SmartRack.AuthError as e:
-            __dialog.msgbox(f'ERROR: {e}', title='Authentication Error')
+    try:
+        tui = SmartRackTUI(console)
+        smartrack = tui.ui('Please select which rooms you would like to test this library with')
+    except SmartRackTUI.TerminateApp:
+        console.clear()
+        console.print(Panel('Terminating SmartRack Web Site Test Suite', style='bold red'))
+        return
 
     # Retrieve list (no filter, get all devices)
     result = smartrack.filter()
@@ -254,6 +178,78 @@ def devicemanager(arguments: argparse.Namespace, console: rich.console) -> None:
     logger.info(f'DeviceManager has terminated')
 
 
+def multidevice(arguments: argparse.Namespace, console: rich.console) -> None:
+    try:
+        tui = SmartRackTUI(console)
+        smartrack = tui.ui('Please select which rooms you would like to test this library with')
+    except SmartRackTUI.TerminateApp:
+        console.clear()
+        console.print(Panel('Terminating SmartRack Web Site Test Suite', style='bold red'))
+        return
+
+    # Retrieve list (no filter, get all devices)
+    result = smartrack.filter()
+
+    # Display all devices in table
+    console.print()
+    console.rule('Displaying booked device details')
+    from rich.table import Table
+    table = Table(show_header=True, header_style="bold green", title="Booked Devices", show_lines=True)
+    table.add_column("Room", style="green")
+    table.add_column("Device", style="green")
+    table.add_column("Server", style="cyan")
+    table.add_column("Username", style="cyan")
+    table.add_column("Password", style="red")
+
+    for details in result.values():
+        table.add_row(details['room'], details['fullname'], details['server'], details['username'], details['password'])
+
+    console.print(table)
+
+    # This queue holds log messages from the worker threads
+    log_queue = multiprocessing.Queue(-1)
+
+    # This queue holds status updates from the worker threads
+    progress_queue = multiprocessing.Queue()  # Queue used for reporting progress
+
+    processes: list[DeviceManager] = []
+    # for now short list of R1 and R3
+    for dev in result.values():
+        if dev['device'] in ['Router 1', 'Router 2', 'Router 3', 'Router 4']:
+#        if True:
+            console.print(f'Adding device {dev}')
+            processes.append(DeviceManager(CiscoDevice(f'{dev["server"]}.ict.swin.edu.au', dev['username'], dev['password']),
+                                           device_type='router',
+                                           log_queue=log_queue,
+                                           update_queue=progress_queue
+                                           )
+                             )
+
+    for p in processes: p.register_action('erase')
+
+    logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
+                        handlers=[rich.logging.RichHandler(markup=True, console=console)],
+                        level=getattr(logging, arguments.debug)
+                        )
+
+    logger = logging.getLogger('')
+
+    test = MultiDeviceManager(console, log_queue=log_queue, progress_queue=progress_queue)
+    test.set_process_list(processes)
+
+    console.print(processes)
+
+    success, unsuccess = test.run_processes(30)
+
+    logger.info(f'Successful completions: {', '.join([task.name for task in success])}')
+    logger.info(f'Failed tasks: {', '.join([task.name for task in unsuccess])}')
+
+
+
+
+#    console.print(result)
+
+
 def parse_arguments() -> argparse.Namespace:
     # Create the main parser with global CLI parameters
     parser = argparse.ArgumentParser(description='Swinburne SmartRack Test Suite',
@@ -284,6 +280,7 @@ def parse_arguments() -> argparse.Namespace:
     dmparser.set_defaults(func=devicemanager)
     dmparser.add_argument('-t', '--type', choices=['router', 'switch'], default='router', help='Specify the type of device to test collection (default: %(default)s)')
     dmparser.add_argument('-o', '--output_dir', default='test_collect', help='Directory to store captured output to (default: %(default)s)')
+    subparsers.add_parser('multidevice', help='Test connecting to - and working with - multiple devices in parallel', argument_default=smartrack).set_defaults(func=multidevice)
 
     return parser.parse_args()
 

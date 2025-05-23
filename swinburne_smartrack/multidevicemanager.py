@@ -6,6 +6,7 @@ import rich.progress
 import rich.live
 
 from .devicemanager import DeviceManager
+from .devicemanager import DeviceActionCompleteEnum
 
 
 class MultiDeviceManager:
@@ -88,10 +89,7 @@ class MultiDeviceManager:
         console_status = self.__console.status("[magenta]Programming multiple devices!")
         console_progress = rich.progress.Progress('[progress.description]{task.description}', rich.progress.BarColumn(),
                                                   '{task.completed} of {task.total} devices completed')
-        progress_bars = [console_progress.add_task('Connected devices', total=len(self.__processes)),
-                         console_progress.add_task('Devices in "enable" mode', total=len(self.__processes)),
-                         console_progress.add_task('Completed devices', total=len(self.__processes))
-                         ]
+        progress_bars = {task: console_progress.add_task(task.value, total=len(self.__processes)) for task in DeviceActionCompleteEnum}
 
         self.__start_time = time.time()
 
@@ -105,9 +103,16 @@ class MultiDeviceManager:
                 if any(p.is_alive() for p in self.__processes) or not self.__progress_queue.empty():
                     # Process next progress updates from worker processes
                     if not self.__progress_queue.empty():
-                        message, stage = self.__progress_queue.get()
-                        if stage < len(progress_bars): console_progress.update(progress_bars[stage], advance=1)
-                        console_status.update(f'[magenta]{message}')
+                        update = self.__progress_queue.get()
+                        if update['task'] in progress_bars:
+                            console_progress.update(progress_bars[update['task']], advance=1)
+                        console_status.update(f'[magenta]{update["message"]}')
+
+
+
+                        # message, stage = self.__progress_queue.get()
+                        # if stage < len(progress_bars): console_progress.update(progress_bars[stage], advance=1)
+                        # console_status.update(f'[magenta]{message}')
 
                     # Process any log messages from all worker processes
                     while not self.__log_queue.empty():

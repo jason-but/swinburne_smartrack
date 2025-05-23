@@ -39,10 +39,10 @@ restart = [ "reload", "no" ]
 version = 1
 
 [debug.loggers.SmartRack]
-level = "INFO"
+level = "WARNING"
 [debug.loggers.CiscoDevice]
-level = "INFO"
+level = "WARNING"
 [debug.loggers.DeviceManager]
-level = "INFO"
+level = "WARNING"
 
 

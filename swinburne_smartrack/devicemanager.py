@@ -39,12 +39,12 @@ class DeviceActionCompleteEnum(Enum):
     :ivar RESTARTED: Indicates that the device has been successfully restarted.
     :ivar FINISHED: Indicates that all actions on the device have concluded.
     """
-    CONNECTED = auto()
-    ENABLE = auto()
-    COLLECTED = auto()
-    ERASED = auto()
-    RESTARTED = auto()
-    FINISHED = auto()
+    CONNECTED = 'Connected devices'
+    ENABLE = 'Devices in "enable" mode'
+    COLLECTED = 'Completed data collections'
+    ERASED = 'Reset devices'
+    RESTARTED = 'Restarted devices'
+    FINISHED = 'Devices with all actions complete'
 
 
 class DeviceManager(multiprocessing.Process):
