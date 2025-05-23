@@ -5,22 +5,22 @@ import argparse
 # rich.console - Text UI Console (from rich package)
 # dialog       - System dialog wrapper (from pythondialog package)
 # requests     - HTTP/HTTPS Client
-import re
 import logging
 
 import dialog
 import multiprocessing
-from time import time
 
-# Import swinburne_smartrack sub-modules
+# Import swinburne_smartrack submodules
 from .config import Configuration
-from .devicemanager import DeviceManager
+from .devicemanager import DeviceManager, DeviceActionCompleteEnum
 from .ciscodevice import CiscoDevice
 from .smartrack import SmartRack
 
 import rich.console
+import rich.logging
 from rich.table import Table
 from rich.panel import Panel
+from rich.pretty import Pretty
 
 # TODO: Clean up imports
 # TODO: Add parser for devicemanager and "all"
@@ -35,8 +35,6 @@ def smartrack(arguments: argparse.Namespace, console: rich.console) -> None:
 
         :param title: Namespace object containing parsed command-line
                           arguments for the application.
-        :param console: Rich console instance used to format and display output.
-        :return: None
         """
         if __dialog.yesno('Are you sure that you want to terminate application?', title=title) == __dialog.OK:
             console.clear()
@@ -98,7 +96,6 @@ def smartrack(arguments: argparse.Namespace, console: rich.console) -> None:
             confirm_termination(title)
 
     # Actual function starts here
-    import rich.logging
     logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
                         handlers=[rich.logging.RichHandler(markup=True, console=console)],
                         level=getattr(logging, arguments.debug)
@@ -162,7 +159,6 @@ def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
     :type console: rich.console.Console
     """
     # Test the CiscoDevice class, connect to device, put in enable mode, configure a Loopback interface
-    import rich.logging
     logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
                         handlers=[rich.logging.RichHandler(markup=True, console=console)],
                         level=getattr(logging, arguments.debug)
@@ -215,6 +211,8 @@ def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
 
 
 def devicemanager(arguments: argparse.Namespace, console: rich.console) -> None:
+    console.print(Panel('Device Manager Test Suite', style='bold green'))
+
     # This queue holds log messages from the worker tasks
     log_queue = multiprocessing.Queue(-1)
 
@@ -222,14 +220,13 @@ def devicemanager(arguments: argparse.Namespace, console: rich.console) -> None:
     progress_queue = multiprocessing.Queue()
 
     process = DeviceManager(CiscoDevice(arguments.hostname, arguments.username, arguments.password, arguments.port),
-                            'router',
-                            progress_queue,
-                            log_queue)
+                            device_type=arguments.type,
+                            update_queue=progress_queue,
+                            log_queue=log_queue)
 
-    process.register_action('collect', output_dir='test_output')
+    process.register_action('collect', out_dir=arguments.output_dir)
 
     # Test the CiscoDevice class, connect to device, put in enable mode, configure a Loopback interface
-    import rich.logging
     logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
                         handlers=[rich.logging.RichHandler(markup=True, console=console)],
                         level=getattr(logging, arguments.debug)
@@ -237,14 +234,16 @@ def devicemanager(arguments: argparse.Namespace, console: rich.console) -> None:
 
     logger = logging.getLogger('')
 
+    console.print()
+    console.rule('Launching DeviceManager Process in background')
     logger.info(f'Starting DeviceManager')
     process.start()
 
     while process.is_alive():
         # Process messages regarding progress from the sub-process
         if not progress_queue.empty():
-            message, stage = progress_queue.get()
-            console.print(f'[{stage}] {message}')
+            update = progress_queue.get()
+            console.print(f':thumbs_up: [bold blue]\\[{update["task"]}]:[/] {update["message"]}')
 
         while not log_queue.empty():
             record = log_queue.get()
@@ -281,7 +280,10 @@ def parse_arguments() -> argparse.Namespace:
 
     subparsers.add_parser('smartrack', help='Test SmartRack website access', argument_default=smartrack).set_defaults(func=smartrack)
     subparsers.add_parser('ciscodevice', help='Test Cisco Device connection', parents=[connection_parser]).set_defaults(func=ciscodevice)
-    subparsers.add_parser('devicemanager', help='Test single device collection in sub-process', parents=[connection_parser]).set_defaults(func=devicemanager)
+    dmparser = subparsers.add_parser('devicemanager', help='Test single device collection in sub-process', parents=[connection_parser])
+    dmparser.set_defaults(func=devicemanager)
+    dmparser.add_argument('-t', '--type', choices=['router', 'switch'], default='router', help='Specify the type of device to test collection (default: %(default)s)')
+    dmparser.add_argument('-o', '--output_dir', default='test_collect', help='Directory to store captured output to (default: %(default)s)')
 
     return parser.parse_args()
 
@@ -298,5 +300,3 @@ if __name__ == '__main__':
         pass
     except (Exception,):
         rich.console.Console().print_exception()
-
-

@@ -18,6 +18,7 @@ import logging
 import logging.handlers
 import multiprocessing
 from typing import Any
+from enum import Enum, auto
 
 # Library modules
 # config.config - SmartRack system configuration (as loaded from config TOML file)
@@ -26,36 +27,58 @@ from .config import Configuration
 from .ciscodevice import CiscoDevice
 
 
+class DeviceActionCompleteEnum(Enum):
+    """
+    The DeviceActionCompleteEnum class implements an enumeration of device action completion states. Used to identify the specific state
+    of an action that has concluded.
+
+    :ivar CONNECTED: Indicates that the device connection process has completed.
+    :ivar ENABLE: Indicates that the device has been successfully entered into enable mode, and is ready to accept commands.
+    :ivar COLLECTED: Indicates that the data collection from the device is complete.
+    :ivar ERASED: Indicates that the data erasure process on the device has concluded.
+    :ivar RESTARTED: Indicates that the device has been successfully restarted.
+    :ivar FINISHED: Indicates that all actions on the device have concluded.
+    """
+    CONNECTED = auto()
+    ENABLE = auto()
+    COLLECTED = auto()
+    ERASED = auto()
+    RESTARTED = auto()
+    FINISHED = auto()
+
+
 class DeviceManager(multiprocessing.Process):
-    def __init__(self, device: CiscoDevice, type: str, update_queue: multiprocessing.Queue, log_queue: multiprocessing.Queue):
+    def __init__(self, device: CiscoDevice, device_type: str, update_queue: multiprocessing.Queue, log_queue: multiprocessing.Queue):
         """
         This class manages a device connection and corresponding commands related to the specific type of the device.
         It validates the type of the device upon instantiation to ensure compatibility with the management configuration.
 
         :param device: Represents the connection to the Cisco device.
-        :param type: Specifies the type of the device to be managed. It must exist in the SmartRack configuration file.
+        :param device_type: Specifies the type of the device to be managed. It must exist in the SmartRack configuration file.
 
         :raises ValueError: If the device type does not exist in the SmartRack configuration file.
         """
         super().__init__()
-        # Store multiprocessing queue variables
-        self.__update_queue = update_queue
-        self.__log_queue = log_queue
+        self.name = 'DeviceManager(' + ':'.join(str(i) for i in self._identity) + ')'
 
-        # Establish logger for SmartRack class
-        self.__log = logging.getLogger('DeviceManager')
-        self.__log.addHandler(logging.handlers.QueueHandler(log_queue))
-        self.__log.debug(f'Constructing Class')
+        # Store multiprocessing queue variables
+        self.__update_queue: multiprocessing.Queue = update_queue
+        self.__log_queue: multiprocessing.Queue = log_queue
 
         # Validate parameters
-        if type not in Configuration().manage:
-            raise ValueError(f'DeviceManager: type {type} is not supported')
+        if device_type not in Configuration().manage:
+            raise ValueError(f'DeviceManager: type {device_type} is not supported')
 
         # Store device connection, device type, and all commands related to managing this device type
         self.__device = device
-        self.__type = type
-        self.__manage: dict[str, list[str]] = Configuration().manage[type]
+        self.__type = device_type
+        self.__manage: dict[str, list[str]] = Configuration().manage[device_type]
         self.__actions: dict[str, Any] = {}
+
+        # Establish logger for DeviceManager class - has to be done last as otherwise calling Configure() will delete the queue log handler
+        self.__log = logging.getLogger('DeviceManager')
+        self.__log.addHandler(logging.handlers.QueueHandler(log_queue))
+        self.__log.debug(f'Constructing Class')
 
     ##########
     # PRIVATE METHODS
@@ -110,7 +133,6 @@ class DeviceManager(multiprocessing.Process):
         :param out_dir: The directory where configuration command outputs will be saved. If the
             directory does not exist, it will be created. Defaults to the current directory.
         """
-        self.__update_queue.put({'task': 'collect', 'message': f'Collecting configurations for {self.name}'})
         self.__log.info(f'Collecting configurations')
 
         self.__log.debug(f'Creating output directory {out_dir}')
@@ -122,15 +144,17 @@ class DeviceManager(multiprocessing.Process):
             with open(os.path.join(out_dir, filename), 'w') as file:
                 file.write(self.__device.capture_command(command, strip_excess_bangs=command in ['show run', 'sh run', 'sho run']))
 
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.COLLECTED, 'message': f'Collected configurations for {self.name}'})
+
     def erase(self) -> None:
         """
         Erases the configuration on the Cisco Device by sending a set of predefined commands.
 
         NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
         """
-        self.__update_queue.put({'task': 'erase', 'message': f'Erasing stored configurations for {self.name}'})
         self.__log.info(f'Erasing {self.__type}')
         self._send_commands(self.__manage['erase'])
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.ERASED, 'message': f'{self.name} - Deleted stored configurations'})
 
     def restart(self) -> None:
         """
@@ -138,79 +162,23 @@ class DeviceManager(multiprocessing.Process):
 
         NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
         """
-        self.__update_queue.put({'task': 'restart', 'message': f'Erasing stored configurations for {self.name}'})
         self.__log.info(f'Restarting {self.__type}')
         self._send_commands(self.__manage['restart'])
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.RESTARTED, 'message': f'{self.name} - Restarted'})
 
     def run(self) -> None:
         # Connect to device and update status
         self.__log.info(f'Establishing connection to {self.__type}')
         self.__device.connect()
-        self.__update_queue.put({'task': 'connected', 'message': f'Connected to {self.name}'})
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.CONNECTED, 'message': f'{self.name} - Connected to {self.__type} device'})
 
         # Set device to enable mode and update status
         self.__log.info(f'Setting device to enable mode')
         self.__device.set_enable_mode([], [])
-        self.__update_queue.put({'task': 'enable', 'message': f'{self.name} now in "enable" mode'})
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.ENABLE, 'message': f'{self.name} - Device in "enable" mode'})
 
         for action in self.__actions.values():
             self.__log.info(f'Executing action: {action["method"].__name__}')
             action['method'](*action['args'], **action['kwargs'])
 
-        self.__update_queue.put({'task': 'finish', 'message': f'Finished all tasks for {self.name}'})
-
-
-if __name__ == '__main__':
-    try:
-        # Create argparse instance and parse command line parameters
-        import argparse
-
-        parser = argparse.ArgumentParser(description='DeviceManager Test Suite',
-                                         formatter_class=argparse.RawTextHelpFormatter,
-                                         allow_abbrev=False
-                                         )
-        parser.add_argument('-c', '--config-file',
-                            help='Specify the smartrack configuration file (default: system configuration)'
-                            )
-        parser.add_argument('-d', '--debug',
-                            default='INFO',
-                            choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
-                            help='Set logging level (default: %(default)s)'
-                            )
-        parser.add_argument('hostname', help='Hostname or IP address of remote Cisco device')
-        parser.add_argument('username', help='Username to connect to remote Cisco device')
-        parser.add_argument('password', help='Password to connect to remote Cisco device')
-        parser.add_argument('port', nargs='?', default=22, type=int, help='Port number of remote Cisco device (default: %(default)s)')
-        arguments = parser.parse_args()
-
-        # Create the Rich Console and Rich Logger
-        import rich.logging
-        import rich.console
-
-        if arguments.config_file: Configuration(arguments.config_file)
-
-        console = rich.console.Console()
-        logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
-                            handlers=[rich.logging.RichHandler(markup=True, console=console)],
-                            level=getattr(logging, arguments.debug)
-                            )
-
-        logger = logging.getLogger('')
-
-        # This queue holds log messages from the worker threads
-        log_queue = multiprocessing.Queue(-1)
-
-        # This queue holds status updates from the worker threads
-        progress_queue = multiprocessing.Queue()  # Queue used for reporting progress
-
-        # Create the Cisco Device, set it to enable mode, and capture/print output of "show ip int brief"
-        manager = DeviceManager(CiscoDevice(arguments.hostname, arguments.username, arguments.password, arguments.port), 'router', progress_queue, log_queue)
-
-        manager.register_action('collect')
-        manager.run()
-
-    except KeyboardInterrupt as err:
-        pass
-    except (Exception,):
-        rich.console.Console().print_exception()
-
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.FINISHED, 'message': f'{self.name} - Finished all actions'})
