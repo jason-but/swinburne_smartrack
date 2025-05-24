@@ -1,48 +1,37 @@
 """
 This module implements the SmartRack class which is used to access the SmartRack system to download booked device information. This information can then be
 used to connect to remote Cisco devices to manage individual devices.
-
-The SmartRack class contains methods that:
-  - Query the user for information about the SmartRack servers
-  - Download device information
-  - Allow the user to filter the devices to a shortlist
-
-Running the module directly will run a test suite allowing verification of functionality.
 """
 
-# Import Libraries
-# re           - Regular Expressions
-# logging      - Python logging module
-# rich.console - Text UI Console (from rich package)
-# dialog       - System dialog wrapper (from pythondialog package)
-# requests     - HTTP/HTTPS Client
+# Import System Libraries
 import re
 import logging
 import rich.console
 import requests
 
-# Library modules
-# config.config - SmartRack system configuration (as loaded from config TOML file)
-from .config import Configuration
+# Import SmartRackLibrary modules
+from .configuration import Configuration
 
 
 class SmartRack:
     """
-    SmartRack class
+    Manages downloading of remote device access information from the SmartRack system. After downloading into an internal database, enables retrieval
+    using a filter to selectively access device information.
     """
     class AuthError(Exception):
+        """
+        This exception is raised when there is an issue with user authentication or authorization. It is intended to encapsulate information related to
+        authentication errors and can be used to signal problems with access control or identity validation.
+        """
         pass
 
-    def __init__(self, console: rich.console.Console, rooms: dict[str, dict[str, str]]):
+    def __init__(self, console: rich.console.Console):
         """
         Construct the SmartRack class instance.
 
-        Creates a logger for the SmartRack class, and initialises all the class internal variables.
-
-        After creation, use Class methods to access the SmartRack servers.
+        Creates a logger for the SmartRack class, and initialises all the class internal variables. After creation, use methods to access the SmartRack servers.
 
         :param console: The application instance of the Rich Console class
-        :param rooms: Information about SmartRack servers maps room short-name to dictionary item mapping 'description' to long-name and 'url' to server URL
         """
         # Establish logger for SmartRack class
         self.__log = logging.getLogger('SmartRack')
@@ -56,12 +45,16 @@ class SmartRack:
 
     def fetch_booked_devices(self, selected_rooms: list[str], auth_details: dict[str, str]) -> None:
         """
-        Download all booked devices for all selected rooms, store all connection details in self.__devices.
+        Fetches and processes details of booked devices from SmartRack servers for the given rooms.
 
-        Method will ask user for authentication details via a dialog box prior to connecting to SmartRack servers.
+        This method connects to the SmartRack servers (using auth_details) for each specified room, and retrieves the device login information for
+        all equipment booked by the user. Each device's details are parsed, sanitized, and stored in an internal dictionary for further use. It logs
+        all significant actions and handles errors related to connection, authentication, and data parsing.
 
-        Progress will be displayed to the console, logging is provided via the logger.
+        :param selected_rooms: A list of room identifiers for which the devices need to be fetched, room URLs in configuration file.
+        :param auth_details: Dictionary containing authentication details to access the SmartRack servers, e.g. {'username': 'myusername', 'password': '<PASSWORD>'}..
 
+        :raises AuthError: If the authentication details fail to access SmartRack.
         """
         with self.__console.status('[magenta]Downloading SmartRack booked devices', spinner='earth'):
             for room in selected_rooms:
@@ -114,18 +107,24 @@ class SmartRack:
 
     def filter(self, enclosures: list[str] = ['Black', 'Red', 'Blue', 'Green', 'Yellow'], kits: list[str] = ['Yellow', 'Green', 'Orange', 'Purple', 'White', ''], devices: list[str] = ['Switch 1', 'Switch 2', 'Switch 3', 'Switch 4', 'Router 1', 'Router 2', 'Router 3', 'Router 4', 'ASA 1', 'ASA 2', 'ASA 3', 'ASA 4', 'ASA 5']) -> dict[str, dict[str, str]]:
         """
-        :param enclosures: List of strings of Enclosures we are interested in
-        :param kits: List of strings of Kits we are interested in
-        :param devices: List of strings of Devices we are interested in
-        :return:
+        Filters the internal `__devices` dictionary based on the specified criteria. The method checks if the enclosure, kit, and device of each item
+        in the dictionary match with the provided lists of allowed values. Only the items that satisfy all conditions will be included in the result.
+
+        :param enclosures: List of acceptable enclosure names. Each device in the resulting dictionary must have its enclosure present in this list.
+        :param kits: List of acceptable kit names. Each device in the resulting dictionary must have its kit present in this list.
+        :param devices: List of acceptable device names. Each device in the resulting dictionary must have its device name present in this list.
+
+        :return: A filtered dictionary mapping device identifiers to device data dictionaries, filtered based on the provided parameters.
         """
         return {key: value for key, value in self.__devices.items() if value['enclosure'] in enclosures and value['kit'] in kits and value['device'] in devices}
 
     def filter_nickname(self, match: list[str]) -> dict[str, dict[str, str]]:
         """
-        Filter devices where nickname is one of the items in list and return the list of devices
-        :param match: List of strings of nicknames we are interested in
-        :return:
+        Filters the device list based on a specified list of nicknames. Only items with the provided nicknames will be included in the result.
+
+        :param match: A list containing nicknames to filter the device list by.
+
+        :return: A filtered dictionary mapping device identifiers to device data dictionaries, filtered based on the provided parameters.
         """
         self.__log.info(f'Filtering device list where nickname is one of {match}')
         return {key: value for key, value in self.__devices.items() if value['nickname'] in match}
