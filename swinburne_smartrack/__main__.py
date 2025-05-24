@@ -1,34 +1,39 @@
+"""
+This file is executed when the swinburne_smartrack is executed as 'python -m swinburne_smartrack'
+
+Provides a test suite to validate the SmartRack library functionality after installation
+"""
+# Import System Libraries
 import argparse
-# Import Libraries
-# re           - Regular Expressions
-# logging      - Python logging module
-# rich.console - Text UI Console (from rich package)
-# dialog       - System dialog wrapper (from pythondialog package)
-# requests     - HTTP/HTTPS Client
-import re
 import logging
-
 import multiprocessing
+import re
 
-from swinburne_smartrack import MultiDeviceManager
-# Import swinburne_smartrack submodules
-from .config import Configuration
-from .devicemanager import DeviceManager, DeviceActionCompleteEnum
-from .ciscodevice import CiscoDevice
-from .smartracktui import SmartRackTUI
-
+# Import third-party libraries
 import rich.console
 import rich.logging
 from rich.table import Table
 from rich.panel import Panel
 from rich.tree import Tree
 
+# Import SmartRackLibrary modules
+from .configuration import Configuration
+from .smartracktui import SmartRackTUI
+from .ciscodevice import CiscoDevice
+from .devicemanager import DeviceManager, DeviceActionCompleteEnum
+from .multidevicemanager import MultiDeviceManager
 
-# TODO: Clean up imports
-# TODO: Add  "all"
-# TODO: Think about how logging is handled in this file
 
-def display_booked_devices(result: dict[str, dict[str, str]], console: rich.console) -> None:
+def display_booked_devices(devices: dict[str, dict[str, str]], console: rich.console) -> None:
+    """
+    Displays the details of booked devices in a tabular format.
+
+    This function utilises the rich library to render a table containing the details of booked devices. Each row in the table corresponds to one booked
+    device and includes information such as the room, device name, server, username, and password. The table is styled for better visibility.
+
+    :param devices: A dictionary (as returned by SmartRack.filter() or SmartRack.filter_nickname()) mapping device identifiers to device data dictionaries.
+    :param console: An instance of `rich.console.Console` used to render the output
+    """
     console.print()
     console.rule('Displaying booked device details')
 
@@ -39,19 +44,50 @@ def display_booked_devices(result: dict[str, dict[str, str]], console: rich.cons
     table.add_column("Username", style="cyan")
     table.add_column("Password", style="red")
 
-    for details in result.values():
+    for details in devices.values():
         table.add_row(details['room'], details['fullname'], details['server'], details['username'], details['password'])
 
     console.print(table)
 
 
+def display_int_brief(interfaces: list[str], console: rich.console) -> None:
+    """
+    Displays an updated summary of device interface configurations in a tabular format.
+
+    This function takes a list of interface details, where the first element corresponds to the headers for the table columns and the last element
+    the router "enable". The data is then presented in a styled, structured  table for easy visualization.
+
+    :param interfaces: List of strings containing interface details, where the first  element is a header row and the last element is discarded.
+    :param console: An instance of `rich.console.Console` used to render the output
+    """
+    console.print()
+    console.rule('Displaying updated device interface details')
+
+    # First element in list contains the headers for each column, remove last element(contains router "enable" prompt)
+    heading = interfaces.pop(0)
+    interfaces.pop()
+
+    # Create and print table
+    table = Table(show_header=True, header_style="bold green", title="Interface Configuration", show_lines=True)
+    for item in heading.split(): table.add_column(item, style="green")
+    for interface in interfaces: table.add_row(*interface.split())
+    console.print(table)
+
+
 def smartrack(arguments: argparse.Namespace, console: rich.console) -> None:
+    """
+    Function executed when module loaded with 'python -m swinburne_smartrack smartrack' - tests the implementation of SmartRackTUI and SmartRack.
+
+    Creates a SmartRackTUI class to enable user to select a SmartRack server and access booked devices. SmartRackTUI.ui() returns a SmartRack instance
+    which is then used to extract the downloaded device details and displayed using display_booked_devices()
+
+    :param arguments: Parsed command-line arguments that configure the application.Expected to include an attribute 'debug' indicating the logging level.
+    :param console: A configured Rich Console object used for formatted output in the terminal.
+    """
     logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
                         handlers=[rich.logging.RichHandler(markup=True, console=console)],
                         level=getattr(logging, arguments.debug)
                         )
-
-    logger = logging.getLogger('')
 
     try:
         tui = SmartRackTUI(console)
@@ -70,6 +106,8 @@ def smartrack(arguments: argparse.Namespace, console: rich.console) -> None:
 
 def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
     """
+    Function executed when module loaded with 'python -m swinburne_smartrack ciscodevice' - tests the implementation of CiscoDevice.
+
     Test the functionality of the CiscoDevice class by connecting to a Cisco network device, switching to enable mode, and performing
     specific configurations and data retrieval.
 
@@ -82,19 +120,14 @@ def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
 
     Progress is logged to the console using the rich logging module.
 
-    :param arguments: Parsed command-line arguments containing parameters to connect to device including hostname, username,password and port
+    :param arguments: Parsed command-line arguments containing parameters to connect to device including hostname, username, password and port
     :param console: A rich console object used to display the output and logs in a styled format.
-    :type console: rich.console.Console
     """
     # Test the CiscoDevice class, connect to device, put in enable mode, configure a Loopback interface
     logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
                         handlers=[rich.logging.RichHandler(markup=True, console=console)],
                         level=getattr(logging, arguments.debug)
                         )
-
-    logger = logging.getLogger('')
-
-    from .ciscodevice import CiscoDevice
 
     console.print(Panel('Cisco Device Test Suite', style='bold green'))
     console.print()
@@ -106,15 +139,7 @@ def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
     console.print()
     console.rule('Capturing Interface Configuration')
     interfaces = [s for s in test_device.capture_command("show ip int brief", False).splitlines() if s != '']
-    heading = interfaces.pop(0)
-    interfaces.pop()
-
-    console.print()
-    console.rule('Displaying device interface details')
-    table = Table(show_header=True, header_style="bold green", title="Interface Configuration", show_lines=True)
-    for item in heading.split(): table.add_column(item, style="green")
-    for interface in interfaces: table.add_row(*interface.split())
-    console.print(table)
+    display_int_brief(interfaces, console)
 
     console.print()
     console.rule('Configuring Loopback Interface')
@@ -127,18 +152,26 @@ def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
     console.print()
     console.rule('Capturing Updated Interface Configuration')
     interfaces = [s for s in test_device.capture_command("show ip int brief", False).splitlines() if s != '']
-    heading = interfaces.pop(0)
-    interfaces.pop()
-
-    console.print()
-    console.rule('Displaying updated device interface details')
-    table = Table(show_header=True, header_style="bold green", title="Interface Configuration", show_lines=True)
-    for item in heading.split(): table.add_column(item, style="green")
-    for interface in interfaces: table.add_row(*interface.split())
-    console.print(table)
+    display_int_brief(interfaces, console)
 
 
 def devicemanager(arguments: argparse.Namespace, console: rich.console) -> None:
+    """
+    Function executed when module loaded with 'python -m swinburne_smartrack devicemanager' - tests the implementation of DeviceManager.
+
+    Manages the execution of a device testing workflow using a DeviceManager process. DeviceManager runs as a sub-process, so we need to create
+    multiprocessing Queue objects to enable communication of progress updates and log messages from the sub-process back to the main process.
+    The function sets up and starts the DeviceManager process, using the arguments parameter to determine the device type (router or switch) and the
+    directory to store captured output to. The process will:
+     - Connect to the device using connection parameters in arguments
+     - Place the device into enable mode
+     - Run the "collect" task on the device, capturing output of the commands configured in the configuration file
+     - Display a progress message as each sub-task completes
+     - Cleans up and destroys the sub-process upon completion
+
+    :param arguments: Parsed command-line arguments containing parameters to connect to device including hostname, username, password, port, device type and output directory.
+    :param console: A rich console object used to display the output and logs in a styled format.
+    """
     console.print(Panel('Device Manager Test Suite', style='bold green'))
 
     # This queue holds log messages from the worker tasks
@@ -185,6 +218,25 @@ def devicemanager(arguments: argparse.Namespace, console: rich.console) -> None:
 
 
 def multidevice(arguments: argparse.Namespace, console: rich.console) -> None:
+    """
+    Function executed when module loaded with 'python -m swinburne_smartrack multidevice' - tests the implementation of all library components.
+
+    Brings everything together into a mini-application.
+     - Uses SmartRackTUI and SmartRack to extract connection information for all devices booked by the user.
+     - Creates a list of DeviceManager processes to connect to each booked device.
+     - Registers each DeviceManager process to execute the "erase" task to delete any saved configurations.
+     - Creates a MultiDeviceManager instance and tasks it to run all DeviceManager processes with a timeout of 30 seconds
+     - Separately lists all devices that successfully, and unsuccessfully, completed the tasks.
+
+    The function initializes the user interface for the SmartRack system to allow room
+    selection, retrieves all devices in the selected rooms, and displays them to the
+    user. Devices that match specific types are then processed in parallel by creating
+    sub-processes to perform an erase operation, and their progress and results are
+    managed and displayed.
+
+    :param arguments: Parsed command-line arguments containing parameters.
+    :param console: A rich console object used to display the output and logs in a styled format.
+    """
     try:
         tui = SmartRackTUI(console)
         smartrack = tui.ui('Please select which rooms you would like to test this library with')
@@ -224,15 +276,15 @@ def multidevice(arguments: argparse.Namespace, console: rich.console) -> None:
                         level=getattr(logging, arguments.debug)
                         )
 
-    logger = logging.getLogger('')
-
+    # Execute all processes using the MultiDeviceManager with a timeout of 30 seconds
     test = MultiDeviceManager(console, log_queue=log_queue, progress_queue=progress_queue)
     test.set_process_list(processes)
 
-    success, unsuccess = test.run_processes(15,
+    success, unsuccess = test.run_processes(30,
                                             [DeviceActionCompleteEnum.CONNECTED, DeviceActionCompleteEnum.ENABLE, DeviceActionCompleteEnum.ERASED, DeviceActionCompleteEnum.FINISHED]
                                             )
 
+    # Display results of test
     console.print()
     console.rule('Test Complete - Displaying Results')
 
@@ -254,6 +306,14 @@ def multidevice(arguments: argparse.Namespace, console: rich.console) -> None:
 
 
 def parse_arguments() -> argparse.Namespace:
+    """
+    Parses and returns the command-line arguments for the Swinburne SmartRack Test Suite.
+
+    This function defines the main argument parser for the SmartRack Test Suite, including global and module-specific subcommand configurations.
+    :returns: argparse.Namespace: A Namespace object containing the parsed command-line arguments.
+
+    :raises: This function will raise errors related to incorrect command-line argument parsing using argparse.ArgumentParser.
+    """
     # Create the main parser with global CLI parameters
     parser = argparse.ArgumentParser(description='Swinburne SmartRack Test Suite',
                                      formatter_class=argparse.RawTextHelpFormatter,
@@ -275,8 +335,10 @@ def parse_arguments() -> argparse.Namespace:
     connection_parser.add_argument('password', help='Password to connect to remote Cisco device')
     connection_parser.add_argument('port', nargs='?', default=22, type=int, help='Port number of remote Cisco device (default: %(default)s)')
 
+    # Create the sub-parsers module
     subparsers = parser.add_subparsers(title='test modules', help='Run one of the following sub-commands to test a particular component of the SmartRack library', required=True)
 
+    # Create individual sub-parsers and extra parameters
     subparsers.add_parser('smartrack', help='Test SmartRack website access', argument_default=smartrack).set_defaults(func=smartrack)
     subparsers.add_parser('ciscodevice', help='Test Cisco Device connection', parents=[connection_parser]).set_defaults(func=ciscodevice)
     dmparser = subparsers.add_parser('devicemanager', help='Test single device collection in sub-process', parents=[connection_parser])
@@ -291,9 +353,11 @@ def parse_arguments() -> argparse.Namespace:
 if __name__ == '__main__':
     console = rich.console.Console()
     try:
+        # Parse all command line arguments, if the '-c' argument exists, load the Configuration file now, otherwise it will be loaded by the submodules using default properties
         arguments = parse_arguments()
         if arguments.config_file: Configuration(arguments.config_file)
 
+        # Run the test module as indicated by func
         arguments.func(arguments, console)
 
     except KeyboardInterrupt as err:

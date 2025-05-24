@@ -1,3 +1,7 @@
+# Import all library classes defined in the swinburne_smartrack library
+
+from .configuration import Configuration
+
 from .smartrack import SmartRack
 
 from .smartracktui import SmartRackTUI
@@ -8,5 +12,4 @@ from .devicemanager import DeviceManager
 
 from .multidevicemanager import MultiDeviceManager
 
-from .config import Configuration
 
