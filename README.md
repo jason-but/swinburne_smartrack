@@ -2,6 +2,72 @@
 
 Programs and Libraries to manage Cisco devices accessible via SmartRack at Swinburne University.
 
+## Installation
+
+You can install the wheel file using:
+```console
+pip install swinburne_smartrack-x.y.z-none-whl
+```
+
+## Testing Installation
+
+The Swinburne SmartRack package comes with four test scripts to evaluate that the installed code works properly
+
+### Create smartrack.toml file
+
+The SmartRack package uses a system configuration file to know how to access the SmartRack system
+and what to do to manage the connected devices. You will need to create a file on your system.
+
+```toml
+################################################################################
+## Definition of SmartRack Servers and how to connect to them
+##
+## smartrack_servers.ROOM - Shortname "ROOM" for the server
+## description            - Text description for server to display on UI
+## url                    - URL to access the get_all.php page on the server
+################################################################################
+[smartrack_servers]
+
+[smartrack_servers.ATC328]
+description = "Cisco Devices in ATC328"
+url = "https://ictencsvr2.ict.swin.edu.au/agent/get_all.php"
+
+[smartrack_servers.ATC329]
+description = "Cisco Devices in ATC329"
+url = "https://ictencsvr6.ict.swin.edu.au/agent/get_all.php"
+
+[smartrack_servers.ATC330]
+description = "Cisco Devices in ATC330"
+url = "https://ictencsvr11.ict.swin.edu.au/agent/get_all.php"
+
+################################################################################
+## Properties to manage a SmartRack device
+##
+## manage.DEVICE - Device type (router, switch, asa)
+## collect       - List of commands to capture output for when collecting student work for this device
+## erase         - List of commands to send to device to clean all stored configuration
+## restart       - List of commands to send to device to reload the device
+################################################################################
+[manage]
+
+# Commands to collect/erase-config/restart a router
+[manage.router]
+collect = [ "sh run", "sh ip int brief", "sh ip route" , "sh access-lists", "sh ip dhcp binding", "sh ip dhcp pool", "sh ip ospf neighbour", "sh ip ospf" ]
+erase = [ "erase startup-config" ]
+restart = [ "reload", "no" ]
+
+# Commands to collect/erase-config/restart a switch
+[manage.switch]
+collect = [ "sh run", "sh ip int brief", "sh vlan brief", "sh int trunk", "sh vlan brief", "sh port-security", "sh spanning-tree" ]
+erase = [ "erase startup-config", "delete vlan.dat" ]
+restart = [ "reload", "no" ]
+
+# Commands to collect/erase-config/restart an ASA firewall
+[manage.asa]
+collect = [ "sh run", "sh ip int brief" ]
+erase = [ "write erase" ]
+restart = [ "reload", "no" ]
+```
 ## Programs
 
 Not developed yet...
