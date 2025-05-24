@@ -10,7 +10,7 @@ authors = [
 ]
 description = "Tools to manage devices via Swinburne Cisco SmartRack"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.11"
 classifiers = [
     "Programming Language :: Python :: 3",
     "Operating System :: OS Independent",
@@ -19,8 +19,8 @@ license = "MIT"
 license-files = ["LICEN[CS]E*"]
 dependencies = ["logging", "paramiko", "pythondialog", "requests", "rich"]
 
-#[project.scripts]
-#test-lib = "test:main"
+[project.scripts]
+smartrack_clean = "swinburne_smartrack.apps:smartrack_clean"
 
 [project.urls]
 Homepage = "https://github.com/jason-but/swinburne-smartrack"

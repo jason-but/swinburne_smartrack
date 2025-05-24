@@ -1,4 +1,10 @@
+################################################################################
 ## Definition of SmartRack Servers and how to connect to them
+##
+## smartrack_servers.ROOM - Shortname "ROOM" for the server
+## description            - Text description for server to display on UI
+## url                    - URL to access the get_all.php page on the server
+################################################################################
 [smartrack_servers]
 
 [smartrack_servers.ATC328]
@@ -13,7 +19,14 @@ url = "https://ictencsvr6.ict.swin.edu.au/agent/get_all.php"
 description = "Cisco Devices in ATC330"
 url = "https://ictencsvr11.ict.swin.edu.au/agent/get_all.php"
 
+################################################################################
 ## Properties to manage a SmartRack device
+##
+## manage.DEVICE - Device type (router, switch, asa)
+## collect       - List of commands to capture output for when collecting student work for this device
+## erase         - List of commands to send to device to clean all stored configuration
+## restart       - List of commands to send to device to reload the device
+################################################################################
 [manage]
 
 # Commands to collect/erase-config/restart a router
@@ -34,15 +47,17 @@ collect = [ "sh run", "sh ip int brief" ]
 erase = [ "write erase" ]
 restart = [ "reload", "no" ]
 
+################################################################################
 ## Code Debugging, set log level for each module below to override default app debug level, valid levels are DEBUG, INFO, WARNING, ERROR
-[debug]
-version = 1
-
-[debug.loggers.SmartRack]
-level = "WARNING"
-[debug.loggers.CiscoDevice]
-level = "WARNING"
-[debug.loggers.DeviceManager]
-level = "WARNING"
-
-
+##
+## NOTE: SHOULD ONLY BE USED FOR DEVELOPMENT PURPOSES
+################################################################################
+#[debug]
+#version = 1
+#
+#[debug.loggers.SmartRack]
+#level = "WARNING"
+#[debug.loggers.CiscoDevice]
+#level = "WARNING"
+#[debug.loggers.DeviceManager]
+#level = "WARNING"
