@@ -1,30 +1,21 @@
 """
-This module implements the CiscoDevice class which is used to manage control of a Cisco Device in the SmartRack system
-
-The CiscoDevice class contains methods that:
-  - Place the device in enable mode
-  - Send commands to the device
-  - Capture responses from the device
-  - Upload configurations to the device
-
-Running the module directly will run a test suite allowing verification of functionality.
+This module implements the DeviceManager class which is used to manage control of a Cisco Device in the SmartRack system
 """
 
-# Import Libraries
-# os      - Manages creating files and directories on the system
-# logging - Python logging module
+# Import System Libraries
 import os
 import logging
 import logging.handlers
 import multiprocessing
 from typing import Any
-from enum import Enum, auto
+from enum import Enum
 
-# Library modules
-# config.config - SmartRack system configuration (as loaded from config TOML file)
-# ciscodevice.CiscoDevice - Manages interaction with remote Cisco Device
+# Import SmartRackLibrary modules
 from .config import Configuration
 from .ciscodevice import CiscoDevice
+
+# TODO: Enable capturing of "extra commands"
+# TODO: Add backup() and restore() actions
 
 
 class DeviceActionCompleteEnum(Enum):
@@ -48,15 +39,30 @@ class DeviceActionCompleteEnum(Enum):
 
 
 class DeviceManager(multiprocessing.Process):
+    """
+    Manages control of a Cisco device within the SmartRack system, can be used to collect, configure, or reset devices automatically.
+
+    All Cisco Devices are managed a subprocess within the multiprocess system. This allows multiple devices to be managed in parallel. Once the instance
+    is instantiated, a series of tasks to be completed can be registered prior to the process being executed. Allowed tasks include:
+     - collect: Collect output of a series of commands and store to a file in a common directory
+     - erase: Delete all configurations on the device
+     - restart: Reload the device
+    """
     def __init__(self, device: CiscoDevice, device_type: str, description: str, full_description: str, update_queue: multiprocessing.Queue, log_queue: multiprocessing.Queue):
         """
-        This class manages a device connection and corresponding commands related to the specific type of the device.
-        It validates the type of the device upon instantiation to ensure compatibility with the management configuration.
+        Initializes an instance of the DeviceManager class, which manages a Cisco device connection and device-specific functionalities.
 
-        :param device: Represents the connection to the Cisco device.
-        :param device_type: Specifies the type of the device to be managed. It must exist in the SmartRack configuration file.
+        This class also handles initialization of logging and update queues for asynchronous operations.
 
-        :raises ValueError: If the device type does not exist in the SmartRack configuration file.
+        :param device: CiscoDevice object that represents the device to be managed.
+        :param device_type: The type of the device being managed. Must be a valid type as defined in the Configuration class.
+        :param description: A short description of the DeviceManager instance, will be used to describe the device when updating progress and logging.
+            Default is generated based on class identity if not explicitly provided.
+        :param full_description: A detailed description for the DeviceManager instance. Defaults to the same as the short description if not explicitly provided.
+        :param update_queue: A multiprocessing Queue to return progress updates to the main process.
+        :param log_queue: A multiprocessing Queue for passing log messages handled by the logging system.
+
+        :raises ValueError: Raised if the provided device_type is not supported as defined in the Configuration class.
         """
         super().__init__()
         self.description = description or 'DeviceManager(' + ':'.join(str(i) for i in self._identity) + ')'
@@ -89,8 +95,7 @@ class DeviceManager(multiprocessing.Process):
         """
         Sends a list of commands to the connected device and logs each command sent.
 
-        This method iterates through a list of commands to send to the Cisco Device, allows a single call to issue
-        multiple commands.
+        This method iterates through a list of commands to send to the Cisco Device, allows a single call to issue multiple commands.
 
         :param command_list: The list of commands to execute on the device.
         """
@@ -98,9 +103,6 @@ class DeviceManager(multiprocessing.Process):
             self.__log.info(f'({self.description}) Sending command "{command}"')
             self.__device.send_command(command)
 
-    ##########
-    # PUBLIC METHODS
-    ##########
     def _establish_connection(self) -> None:
         """
         Establishes a connection with the device and configures it to the enable mode.
@@ -112,11 +114,19 @@ class DeviceManager(multiprocessing.Process):
         self.__log.info(f'({self.description}) Setting device to enable mode')
         self.__device.set_enable_mode([], [])
 
+    ##########
+    # PUBLIC METHODS
+    ##########
     def register_action(self, action: str, *args, **kwargs) -> None:
         """
         Registers an action with its corresponding method and arguments into the internal actions registry.
         When the process is running, and after the connection is established in enable mode, all registered methods
         will be executed in turn with the parameters provided here.
+
+        Currently allowed actions are:
+         - register_action('collect', out_dir='/file/storage/directory')
+         - register_action('erase')
+         - register_action('restart')
 
         :param action: The name of the method in the class to be registered.
         :param args: Positional arguments required by the action method.
@@ -127,13 +137,11 @@ class DeviceManager(multiprocessing.Process):
 
     def collect(self, out_dir: str = '.') -> None:
         """
-        Collects configurations from the device by executing pre-defined commands and saving the
-        output into specified files within the given output directory.
+        Collects configurations from the device by executing pre-defined commands and saving the output into specified files within the given output directory.
 
         NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
 
-        :param out_dir: The directory where configuration command outputs will be saved. If the
-            directory does not exist, it will be created. Defaults to the current directory.
+        :param out_dir: The directory where configuration command outputs will be saved. If the directory does not exist, it will be created. Defaults to the current directory.
         """
         self.__log.info(f'({self.description}) Collecting configurations')
 
@@ -169,6 +177,16 @@ class DeviceManager(multiprocessing.Process):
         self.__update_queue.put({'task': DeviceActionCompleteEnum.RESTARTED, 'message': f'{self.description} - Restarted'})
 
     def run(self) -> None:
+        """
+        Method to be run in the sub-process
+
+        When launched as a process, will:
+         - Connect to the CiscoDevice
+         - Set the device to "enable" mode
+         - Execute all registered actions in turn
+
+        All progress updates are pushed to the update queue. Logs are generated at each significant step in the process.
+        """
         # Connect to device and update status
         self.__log.info(f'({self.description}) Establishing connection to {self.__type}')
         self.__device.connect()
