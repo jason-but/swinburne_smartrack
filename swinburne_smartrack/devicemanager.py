@@ -202,3 +202,14 @@ class DeviceManager(multiprocessing.Process):
             action['method'](*action['args'], **action['kwargs'])
 
         self.__update_queue.put({'task': DeviceActionCompleteEnum.FINISHED, 'message': f'{self.description} - Finished all actions'})
+
+    def recreate(self) -> 'DeviceManager':
+        """
+        Recreates a new instance of the DeviceManager with the current object's attributes.
+
+        If the DeviceManager process is terminated early, or fails, it cannot be restarted to try again. Therefore, this method returns a new instance
+        of the same sub-process that can be restarted to re-try the failed attempt.
+
+        :return: A new instance of DeviceManager initialized with the current object's attributes.
+        """
+        return DeviceManager(self.__device, self.__type, self.description, self.full_description, self.__update_queue, self.__log_queue)
