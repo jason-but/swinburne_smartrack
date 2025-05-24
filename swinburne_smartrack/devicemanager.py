@@ -11,7 +11,7 @@ from typing import Any
 from enum import Enum
 
 # Import SmartRackLibrary modules
-from .config import Configuration
+from .configuration import Configuration
 from .ciscodevice import CiscoDevice
 
 # TODO: Enable capturing of "extra commands"

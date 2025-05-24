@@ -1,6 +1,5 @@
 """
 This module implements the CiscoDevice class which is used to manage the connection to a Cisco Device in the SmartRack system
-
 """
 
 # Import System Libraries

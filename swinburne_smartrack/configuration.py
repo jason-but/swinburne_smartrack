@@ -1,4 +1,8 @@
+"""
+This module implements the Configuration class which is used to manage the SmartRack configuration for all library modules and applications.
+"""
 
+# Import System Libraries
 import logging.config
 import tomllib
 import os
@@ -6,13 +10,23 @@ import pathlib
 
 
 class Configuration:
+    """
+    Manages the application configuration using a singleton pattern.
+
+    This class ensures that only one instance of the configuration is created and shared across the application. It dynamically loads configuration
+    from a TOML file, either specified by the user or found in predefined default paths. The configuration file must include required sections like
+    'smartrack_servers' and 'manage'. Additionally, the class integrates logging configuration if the debug section is present in the file.
+
+    :ivar _instance: Singleton instance of the class; ensures one instance across the application.
+    :ivar _initialized: Indicates if the configuration has already been initialized to prevent reinitialization.
+    """
     _instance = None
     _initialized = False
 
     def __new__(cls, *args, **kwargs):
         """
-        Implements a singleton pattern to ensure only one instance of the class is created, shared across any number of
-        instantiations. Each call to this class returns the same instance, maintaining the state across calls.
+        Implements a singleton pattern to ensure only one instance of the class is created, shared across any number of instantiations. Each call to
+        this class returns the same instance, maintaining the state across calls.
 
         :param cls: The class being instantiated.
         :param args: Positional arguments that are passed during instantiation.
@@ -20,26 +34,24 @@ class Configuration:
 
         :returns: A single instance of the class.
         """
-        if not cls._instance:
-            cls._instance = super(Configuration, cls).__new__(cls)
+        if not cls._instance: cls._instance = super(Configuration, cls).__new__(cls)
         return cls._instance
 
     def __init__(self, filename: str = None):
         """
-        Initializes the configuration of the application, attempting to load from the specified TOML configuration file
-        or default configuration file paths. If no valid file is found, it raises a `FileNotFoundError`.
+        Initializes the configuration of the application, attempting to load from the specified TOML configuration file or default configuration
+        file paths. If no valid file is found, it raises a FileNotFoundError Exception.
 
-        The constructor checks if a configuration has already been instantiated (via the `_initialized` flag) to prevent
-        reinitialization. If a `filename` is provided, it looks for that specific file. If no `filename` is provided, it
-        attempts to load the configuration from a predefined list of default paths. The configuration file must
-        contain certain mandatory sections, including 'smartrack_servers' and 'manage'.
+        The constructor checks if a configuration has already been instantiated (via the `_initialized` flag) to prevent reinitialization. If a
+        filename is provided, it looks for that specific file. If no filename is provided, it attempts to load the configuration from a predefined
+        list of default paths. The configuration file must contain certain mandatory sections, including 'smartrack_servers' and 'manage'.
 
-        If present, the `debug` section in the configuration will initialize the logging system based on the provided
-        dictionary configuration. If any configuration file raises an error during parsing, logging for the corresponding
-        error is generated and the constructor continues trying other files in the list.
+        If present, the `debug` section in the configuration will initialize the logging system based on the provided dictionary configuration.
+        If any configuration file raises an error during parsing, logging for the corresponding error is generated and the constructor continues
+        trying other files in the list.
 
-        :param filename: An optional path to a specific configuration file. If not provided, a set of default configuration
-        files are attempted.
+        :param filename: An optional path to a specific configuration file. If not provided, a set of default configuration files are attempted.
+
         :raises FileNotFoundError: If no valid configuration file is found.
         """
         # If a configuration has already been loaded, just return

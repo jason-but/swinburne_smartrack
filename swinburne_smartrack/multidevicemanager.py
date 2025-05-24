@@ -1,3 +1,8 @@
+"""
+This module implements the MultiDeviceManager class which is used to run multiple DeviceManager instances in parallel.
+"""
+
+# Import System Libraries
 import time
 import multiprocessing
 import logging
@@ -5,6 +10,7 @@ import rich
 import rich.progress
 import rich.live
 
+# Import SmartRackLibrary modules
 from .devicemanager import DeviceManager
 from .devicemanager import DeviceActionCompleteEnum
 
@@ -32,15 +38,19 @@ class MultiDeviceManager:
         # Local variable for the console, also for the pythondialog instance
         self.__console: rich.console.Console = console
 
-        # Create the two multiprocessing queues, worker processes queue all log messages to log queue and queue progress updates to progress queue
+        # Store the two multiprocessing queues, worker processes queue all log messages to log queue and queue progress updates to progress queue
         self.__log_queue: multiprocessing.Queue = log_queue
         self.__progress_queue: multiprocessing.Queue = progress_queue
 
-        # List of worker processes
+        # List of worker processes to manage
         self.__processes: list[DeviceManager] = []
 
+        # Variable to track start time to manage timeout
         self.__start_time: int = 0
 
+    ##########
+    # PRIVATE METHODS
+    ##########
     def _keep_running(self, timeout: int) -> bool:
         """
         Checks whether the manager task should keep running based on the elapsed time and the specified timeout value. If the timeout value is zero, the process
@@ -52,11 +62,14 @@ class MultiDeviceManager:
         if timeout == 0: return True
         return time.time() - self.__start_time <= timeout
 
+    ##########
+    # PUBLIC METHODS
+    ##########
     def set_process_list(self, process_list: list[DeviceManager]) -> None:
         """
         Stores the list of processes for the manager to execute to the internal process list
 
-        :param process_list: A list of TaskProcess objects to be managed by the class instance.
+        :param process_list: A list of DeviceManager objects to be managed by the class instance.
         """
         self.__processes = process_list
 
@@ -66,18 +79,19 @@ class MultiDeviceManager:
 
         The method initiates all processes, monitors their progress using a visual console status and progress bar, and checks if processes complete
         successfully within the timeout. If processes remain alive past the timeout, they are terminated. The method also monitors log messages from the worker
-        processes.
+        processes. Successful completion of tasks is indicated by the console status and progress bar.
 
-        :param ui_action_items:
-        :param timeout: The maximum duration in seconds for which the processes will be allowed to run. If set to zero, the processes will run indefinitely until all are completed.
+        :param timeout: The maximum duration, in seconds, for the processes to run. If set to zero, the processes will continue to run until all are complete.
+        :param ui_action_items: A list of DeviceActionCompleteEnum values indicating various states or tasks to track during process execution.
+            If not specified, all possible DeviceActionCompleteEnum states are used.
 
         :return: A tuple containing two lists:
-                 - The first list contains all successfully completed processes.
-                 - The second list contains the processes that were unsuccessful or terminated before completion.
+                 - The first list consists of successfully completed processes.
+                 - The second list consists of processes that either failed or were terminated before completion.
 
-        :raises ValueError: If the `timeout` parameter is less than zero.
+        :raises ValueError: Raised when the `timeout` is specified as a negative integer.
         """
-        # Validate timeout parameter
+        # Validate timeout parameter and process list
         if timeout < 0: raise ValueError('Timeout must be greater than 0')
 
         if len(self.__processes) == 0:
@@ -88,12 +102,13 @@ class MultiDeviceManager:
 
         # Create user interfaces
         action_items: list[DeviceActionCompleteEnum] = ui_action_items or list(DeviceActionCompleteEnum)
-        console_status = self.__console.status("[magenta]Programming multiple devices!")
+        console_status = self.__console.status("[magenta]Initiating connection to multiple devices!")
         console_progress = rich.progress.Progress('[progress.description]{task.description}',
                                                   rich.progress.BarColumn(bar_width=None),
                                                   '{task.completed} of {task.total} devices completed', expand=True)
         progress_bars = {task: console_progress.add_task(task.value, total=len(self.__processes)) for task in action_items}
 
+        # Set the start time to enable the timeout
         self.__start_time = time.time()
 
         self.__log.info(f'Starting {len(self.__processes)} processes')
@@ -104,26 +119,27 @@ class MultiDeviceManager:
             while self._keep_running(timeout):
                 # If processes are running or there are still messages to process in the queue
                 if any(p.is_alive() for p in self.__processes) or not self.__progress_queue.empty():
-                    # Process next progress updates from worker processes
+                    # Process next progress update from any DeviceManager processes
                     if not self.__progress_queue.empty():
                         update = self.__progress_queue.get()
                         if update['task'] in progress_bars:
                             console_progress.update(progress_bars[update['task']], advance=1)
                         console_status.update(f'[magenta]{update["message"]}')
 
-                    # Process any log messages from all worker processes
+                    # Process any log messages from all DeviceManager processes
                     while not self.__log_queue.empty():
                         record = self.__log_queue.get()
                         self.__log.handle(record)
 
                 else:
+                    # No updates in the progress queue and no DeviceManager processes running
                     self.__log.info("All tasks and stages are complete AND no messages left in queue! Exiting loop..!")
                     console_status.update(f'[bold green]All Device Tasks are complete!')
                     successful_processes = self.__processes
                     unsuccessful_processes = []
                     break
             else:
-                # Only do while else if while loop finished normally - ie timeout
+                # This block only runs if the while loop above finished normally - ie timeout has occurred
                 self.__log.info("Timeout period has expired! Exiting loop..!")
                 successful_processes = [p for p in self.__processes if not p.is_alive()]
                 unsuccessful_processes = [p for p in self.__processes if p.is_alive()]
