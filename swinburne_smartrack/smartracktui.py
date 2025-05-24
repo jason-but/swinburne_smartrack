@@ -27,14 +27,14 @@ class SmartRackTUI:
 
     def __init__(self, console: rich.console.Console, server_menu_title: str = None, auth_form_title: str = None, confirm_terminate_title: str = None):
         """
-        Implements a User Interface to manage console-based interactions using the `dialog` library to manage user-input. On running the ui() method, will
+        Implements a User Interface to manage console-based interactions using the dialog library to manage user-input. On running the ui() method, will
         return a SmartRack instance containing device information for all booked devices on the selected SmartRack servers.
 
-        :param console: A `rich.console.Console` instance used for rendering formatted console output.
+        :param console: A rich.console.Console instance used for rendering formatted console output.
         :type console: rich.console.Console
-        :param server_menu_title: A string providing the title for the server selection dialog. (default = ' ATC Room Selection ')
-        :param auth_form_title: A string providing the title for the authentication dialog. (default = ' ATC Website Authentication Information ')
-        :param confirm_terminate_title: A string providing the title for the termination confirmation dialog. (default = ' Terminate Application ')
+        :param server_menu_title: A string providing the title for the server selection dialog. (default = ' ATC Room Selection ' )
+        :param auth_form_title: A string providing the title for the authentication dialog. (default = ' ATC Website Authentication Information ' )
+        :param confirm_terminate_title: A string providing the title for the termination confirmation dialog. (default = ' Terminate Application ' )
         """
         self.__console = console
         self.__log = logging.getLogger('SmartRackTUI')
