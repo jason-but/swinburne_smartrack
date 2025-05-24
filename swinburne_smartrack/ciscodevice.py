@@ -1,35 +1,27 @@
 """
-This module implements the CiscoDevice class which is used to manage control of a Cisco Device in the SmartRack system
+This module implements the CiscoDevice class which is used to manage the connection to a Cisco Device in the SmartRack system
 
-The CiscoDevice class contains methods that:
-  - Place the device in enable mode
-  - Send commands to the device
-  - Capture responses from the device
-  - Upload configurations to the device
-
-Running the module directly will run a test suite allowing verification of functionality.
 """
 
-# Import Libraries
-# time    - Access system time functions
-# re      - Regular Expressions
-# logging - Python logging module
-# paramiko - ssh library to support remote connections
+# Import System Libraries
 import time
 import re
 import logging
 import paramiko
+
+# TODO: username/password parsing in set_enable_mode()
+# TODO: Implement comments for set_enable_mode()
 
 
 class CiscoDevice:
     """
     Manages interaction with a Cisco network device via an SSH connection.
 
-    This class provides utilities for managing network devices, including sending commands, enabling privileged mode,
-    capturing responses, and uploading configurations. It aims to streamline communication and execution of
-    commands on Cisco devices while maintaining proper internal states.
+    This class provides utilities for managing network devices, including sending commands, enabling privileged mode, capturing responses,
+    and uploading configurations. It aims to streamline communication and execution of commands on Cisco devices while maintaining proper internal states.
     """
 
+    # Static variable containing lookup tables for responses to prompts to help state machine progress the connection into "enable" mode
     prompts = {'>': 'ena\r\n',
                'Would you like to enter the initial configuration dialog? [yes/no]: ': 'no\r\n',
                'Would you like to terminate autoinstall? [yes]:': 'yes\r\n',
@@ -50,9 +42,7 @@ class CiscoDevice:
         :param password: The password for authenticating to the SSH server.
         :param port: The port number to connect to on the SSH server. Default is 22.
 
-        :raises ValueError: If the hostname is not a valid URL.
-        :raises ValueError: If the username is not provided.
-        :raises ValueError: If the password is not provided.
+        :raises ValueError: If the hostname is not a valid URL, or the username or password is not provided.
         """
         # Establish logger for SmartRack class
         self.__log = logging.getLogger('CiscoDevice')
@@ -102,7 +92,8 @@ class CiscoDevice:
         This method reads data from the channel in a loop and appends it to the result string until the specified conditions are met.
 
         :param timeout: The timeout value in seconds. Specifies how long the method should attempt to read input before returning.
-        :return: The accumulated input read from the channel up to the specified wait string or until the timeout occurs.
+
+        :return: The accumulated input read from the channel until the timeout occurs.
         """
         self.__log.debug(f'Reading all text from device with a timeout of {timeout} seconds')
 
@@ -134,6 +125,7 @@ class CiscoDevice:
 
         :param wait_string: The string to stop flushing the input. If the wait string is empty, the method will return an empty string immediately.
         :param timeout: The timeout value in seconds. Specifies how long the method should attempt to flush input before returning.
+
         :return: The accumulated input read from the channel up to the specified wait string or until the timeout occurs.
         """
         # If we want to read an empty string, return immediately
@@ -153,9 +145,8 @@ class CiscoDevice:
 
     def _obtain_current_prompt(self) -> str:
         """
-        Obtains the current device prompt by continuously reading all available text from a device connection. It attempts to
-        trigger output from the device if no text is received by sending a carriage return. The last non-empty line of the
-        received text is interpreted as the current prompt.
+        Obtains the current device prompt by continuously reading all available text from a device connection. It attempts to trigger output from
+        the device if no text is received by sending a carriage return. The last non-empty line of the received text is interpreted as the current prompt.
 
         :return: The last non-empty line of text from the device, indicating the current prompt.
         """
@@ -172,6 +163,37 @@ class CiscoDevice:
 
             # Nothing received, try to trigger output by sending a carriage return
             self._send_text('\r\n')
+
+    def _capture_response_until(self, command: str, end_response: str) -> str:
+        """
+        Captures the response sent by the device in reaction to a given command until a specified ending response (prompt) is received. In case
+        the ending response is not received within a given timeout period, the function attempts re-capturing by sending additional inputs to
+        wake the connected device.
+
+        :param command: The command string to send to the device.
+        :param end_response: Stop capturing when this response is seen.
+        :return: The complete captured response text from the device including the ending prompt.
+
+        :raises Exception: If the remote device is not connected
+        """
+        if not self.__connection: raise Exception('CiscoDevice: connection is not established')
+
+        self.__log.debug(f'Capturing response to "{command}" until prompt "{end_response.replace("\r\n", "\\r\\n")}"')
+
+        # Send the command text to the device then discard all input up to and including the command just sent
+        self.send_command(command)
+        self._read_all_text_until(command, 2)
+
+        # Capture text up to and including end_response, timeout after 5 seconds
+        result = self._read_all_text_until(end_response, 5)
+
+        # If we timed-out without detecting end_response, wake the router with a couple of returns before trying again
+        while end_response not in result:
+            self._send_text('\r\n')
+            self._send_text('\r\n')
+            result += self._read_all_text_until(end_response, 5)
+
+        return result
 
     ##########
     # PUBLIC METHODS
@@ -209,16 +231,25 @@ class CiscoDevice:
 
         :raises Exception: If the remote device is not connected
         """
-        if not self.__connection:
-            raise Exception('CiscoDevice: connection is not established')
+        if not self.__connection: raise Exception('CiscoDevice: connection is not established')
 
         self.__log.info(f'Sending command to device: "{command}"')
         self._send_text(f'{command}\r\n')
 
     def set_enable_mode(self, usernames: list[str], passwords: list[str]) -> None:
+        """
+        Attempts to place the connected Cisco device in "enable mode".
 
-        if not self.__connection:
-            raise Exception('CiscoDevice: connection is not established')
+        This involves handling various prompts presented by the device and sending appropriate responses, such as usernames, passwords, or other
+        necessary commands. The method executes a state machine until the device reaches enable mode, indicated by a prompt ending with '#'.
+        Once in enable mode, it configures certain terminal settings and disables unnecessary debugging messages.
+
+        :param usernames: A list of username strings to attempt if authentication is required.
+        :param passwords: A list of password strings to attempt if authentication is required.
+
+        :raises Exception: If the remote device is not connected
+        """
+        if not self.__connection: raise Exception('CiscoDevice: connection is not established')
 
         self.__log.info('Trying to put device into enable mode (wait 5 seconds)')
         time.sleep(5)
@@ -270,42 +301,10 @@ class CiscoDevice:
             self.__log.info('Unknown prompt, trying again')
             self.send_command('')
 
-    def capture_response_until(self, command: str, end_response: str) -> str:
-        """
-        Captures the response sent by the device in reaction to a given command until a specified ending response (prompt) is
-        received. In case the ending response is not received within a given timeout period, the function attempts re-capturing
-        by sending additional inputs to wake the connected device.
-
-        :param command: The command string to send to the device.
-        :param end_response: Stop capturing when this response is seen.
-        :return: The complete captured response text from the device including the ending prompt.
-
-        :raises Exception: If the remote device is not connected
-        """
-        if not self.__connection:
-            raise Exception('CiscoDevice: connection is not established')
-
-        self.__log.debug(f'Capturing response to "{command}" until prompt "{end_response.replace("\r\n", "\\r\\n")}"')
-
-        # Send the command text to the device then discard all input up to and including the command just sent
-        self.send_command(command)
-        self._read_all_text_until(command, 2)
-
-        # Capture text up to and including end_response, timeout after 5 seconds
-        result = self._read_all_text_until(end_response, 5)
-
-        # If we timed-out without detecting end_response, wake the router with a couple of returns before trying again
-        while end_response not in result:
-            self._send_text('\r\n')
-            self._send_text('\r\n')
-            result += self._read_all_text_until(end_response, 5)
-
-        return result
-
     def capture_command(self, command: str, strip_excess_bangs: bool = True) -> str:
         """
-        Captures a command's response until a specific prompt is encountered. Allows optional stripping of
-        excess exclamation marks ('!') from the captured output.
+        Captures a command's response until the enable prompt is output from the device. Allows optional stripping of excess exclamation marks ('!')
+        from the captured output.
 
         :param command: The command whose response needs to be captured.
         :param strip_excess_bangs: If True, excess consecutive exclamation marks in the response will be reduced to a single one. Default is True.
@@ -313,11 +312,10 @@ class CiscoDevice:
 
         :raises Exception: If the remote device is not connected
         """
-        if not self.__connection:
-            raise Exception('CiscoDevice: connection is not established')
+        if not self.__connection: raise Exception('CiscoDevice: connection is not established')
 
         self.__log.info(f'Capturing command: "{command}"')
-        result = self.capture_response_until(command, f'\r\n{self.__enable_prompt}')
+        result = self._capture_response_until(command, f'\r\n{self.__enable_prompt}')
 
         if strip_excess_bangs:
             self.__log.info('Stripping excess bangs from captured command')
@@ -329,16 +327,15 @@ class CiscoDevice:
         """
         Uploads a list of configuration commands to a terminal session.
 
-        The method puts the device into configuration mode before iterating  over the provided configuration lines, uploading
-        each non-empty line to the terminal session. It ensures each command is fully processed by waiting until the configuration
-        prompt is detected. After all lines are uploaded, the method exits the configuration mode.
+        The method puts the device into configuration mode before iterating  over the provided configuration lines, uploading each non-empty
+        line to the terminal session. It ensures each command is fully processed by waiting until the configuration prompt is detected. After
+        all lines are uploaded, the method exits the configuration mode.
 
         :param config: A list of strings containing configuration commands to be uploaded to the terminal.
 
         :raises Exception: If the remote device is not connected
         """
-        if not self.__connection:
-            raise Exception('CiscoDevice: connection is not established')
+        if not self.__connection: raise Exception('CiscoDevice: connection is not established')
 
         self.__log.info('Uploading configuration')
 
@@ -346,6 +343,6 @@ class CiscoDevice:
         for line in config:
             if len(line) > 0:
                 self.__log.info(f'Uploading config line: "{line}"')
-                self.capture_response_until(line, f')#')
+                self._capture_response_until(line, f')#')
 
         self.send_command('end')
