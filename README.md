@@ -68,11 +68,31 @@ collect = [ "sh run", "sh ip int brief" ]
 erase = [ "write erase" ]
 restart = [ "reload", "no" ]
 ```
+
+### Accessing Tests
+
+Execute:
+```code
+python -m swinburne_smartrack -h
+```
 ## Programs
 
 Not developed yet...
 
-## Libraries
+## Developers
+
+If you wish to develop your own applications using the swinburne_smartrack package, you will find 
+that all the library files and classes are fully documented and can be accessed via the Python
+help() function.
+
+The classes that can be imported via ```code import swinburne_smartrack``` are:
+
+1) ```code Configuration```
+2) ```code SmartRack```
+3) ```code SmartRackTUI```
+4) ```code CiscoDevice```
+5) ```code DeviceManager```
+6) ```code MultiDeviceManager```
 
 It is expected that the user will use this package via installed programs as listed above. There
 are two reasons to read the information in the **Libraries** section:
