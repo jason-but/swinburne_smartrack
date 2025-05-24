@@ -60,7 +60,7 @@ class MultiDeviceManager:
         """
         self.__processes = process_list
 
-    def run_processes(self, timeout: int) -> tuple[list[DeviceManager], list[DeviceManager]]:
+    def run_processes(self, timeout: int, ui_action_items: list[DeviceActionCompleteEnum] = None) -> tuple[list[DeviceManager], list[DeviceManager]]:
         """
         Runs multiple processes with a specified timeout and manages their progress and logging.
 
@@ -68,6 +68,7 @@ class MultiDeviceManager:
         successfully within the timeout. If processes remain alive past the timeout, they are terminated. The method also monitors log messages from the worker
         processes.
 
+        :param ui_action_items:
         :param timeout: The maximum duration in seconds for which the processes will be allowed to run. If set to zero, the processes will run indefinitely until all are completed.
 
         :return: A tuple containing two lists:
@@ -86,10 +87,12 @@ class MultiDeviceManager:
         self.__log.info(f'Running processes for {timeout} seconds' if timeout > 0 else 'Running processes until all are complete')
 
         # Create user interfaces
+        action_items: list[DeviceActionCompleteEnum] = ui_action_items or list(DeviceActionCompleteEnum)
         console_status = self.__console.status("[magenta]Programming multiple devices!")
-        console_progress = rich.progress.Progress('[progress.description]{task.description}', rich.progress.BarColumn(),
-                                                  '{task.completed} of {task.total} devices completed')
-        progress_bars = {task: console_progress.add_task(task.value, total=len(self.__processes)) for task in DeviceActionCompleteEnum}
+        console_progress = rich.progress.Progress('[progress.description]{task.description}',
+                                                  rich.progress.BarColumn(bar_width=None),
+                                                  '{task.completed} of {task.total} devices completed', expand=True)
+        progress_bars = {task: console_progress.add_task(task.value, total=len(self.__processes)) for task in action_items}
 
         self.__start_time = time.time()
 
@@ -108,12 +111,6 @@ class MultiDeviceManager:
                             console_progress.update(progress_bars[update['task']], advance=1)
                         console_status.update(f'[magenta]{update["message"]}')
 
-
-
-                        # message, stage = self.__progress_queue.get()
-                        # if stage < len(progress_bars): console_progress.update(progress_bars[stage], advance=1)
-                        # console_status.update(f'[magenta]{message}')
-
                     # Process any log messages from all worker processes
                     while not self.__log_queue.empty():
                         record = self.__log_queue.get()
@@ -131,7 +128,7 @@ class MultiDeviceManager:
                 successful_processes = [p for p in self.__processes if not p.is_alive()]
                 unsuccessful_processes = [p for p in self.__processes if p.is_alive()]
                 for process in [p for p in unsuccessful_processes if p.is_alive()]:
-                    self.__log.info(f"Terminating process {process.name}...")
+                    self.__log.info(f"Terminating process {process.description}...")
                     process.terminate()
                 console_status.update(f'[bold red]Not all Devices completed in time!')
 

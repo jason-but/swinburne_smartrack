@@ -5,9 +5,9 @@ import argparse
 # rich.console - Text UI Console (from rich package)
 # dialog       - System dialog wrapper (from pythondialog package)
 # requests     - HTTP/HTTPS Client
+import re
 import logging
 
-import dialog
 import multiprocessing
 
 from swinburne_smartrack import MultiDeviceManager
@@ -15,17 +15,34 @@ from swinburne_smartrack import MultiDeviceManager
 from .config import Configuration
 from .devicemanager import DeviceManager, DeviceActionCompleteEnum
 from .ciscodevice import CiscoDevice
-from .smartrack import SmartRack
 from .smartracktui import SmartRackTUI
 
 import rich.console
 import rich.logging
 from rich.table import Table
 from rich.panel import Panel
+from rich.tree import Tree
+
 
 # TODO: Clean up imports
 # TODO: Add  "all"
 # TODO: Think about how logging is handled in this file
+
+def display_booked_devices(result: dict[str, dict[str, str]], console: rich.console) -> None:
+    console.print()
+    console.rule('Displaying booked device details')
+
+    table = Table(show_header=True, header_style="bold green", title="Booked Devices", show_lines=True)
+    table.add_column("Room", style="green")
+    table.add_column("Device", style="green")
+    table.add_column("Server", style="cyan")
+    table.add_column("Username", style="cyan")
+    table.add_column("Password", style="red")
+
+    for details in result.values():
+        table.add_row(details['room'], details['fullname'], details['server'], details['username'], details['password'])
+
+    console.print(table)
 
 
 def smartrack(arguments: argparse.Namespace, console: rich.console) -> None:
@@ -48,20 +65,7 @@ def smartrack(arguments: argparse.Namespace, console: rich.console) -> None:
     result = smartrack.filter()
 
     # Display all devices in table
-    console.print()
-    console.rule('Displaying booked device details')
-    from rich.table import Table
-    table = Table(show_header=True, header_style="bold green", title="Booked Devices", show_lines=True)
-    table.add_column("Room", style="green")
-    table.add_column("Device", style="green")
-    table.add_column("Server", style="cyan")
-    table.add_column("Username", style="cyan")
-    table.add_column("Password", style="red")
-
-    for details in result.values():
-        table.add_row(details['room'], details['fullname'], details['server'], details['username'], details['password'])
-
-    console.print(table)
+    display_booked_devices(result, console)
 
 
 def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
@@ -145,6 +149,8 @@ def devicemanager(arguments: argparse.Namespace, console: rich.console) -> None:
 
     process = DeviceManager(CiscoDevice(arguments.hostname, arguments.username, arguments.password, arguments.port),
                             device_type=arguments.type,
+                            description='',
+                            full_description='',
                             update_queue=progress_queue,
                             log_queue=log_queue)
 
@@ -184,27 +190,17 @@ def multidevice(arguments: argparse.Namespace, console: rich.console) -> None:
         smartrack = tui.ui('Please select which rooms you would like to test this library with')
     except SmartRackTUI.TerminateApp:
         console.clear()
-        console.print(Panel('Terminating SmartRack Web Site Test Suite', style='bold red'))
+        console.print(Panel('Terminating SmartRack Multi-Device Control Test Suite', style='bold red'))
         return
 
     # Retrieve list (no filter, get all devices)
     result = smartrack.filter()
 
     # Display all devices in table
+    display_booked_devices(result, console)
+
     console.print()
-    console.rule('Displaying booked device details')
-    from rich.table import Table
-    table = Table(show_header=True, header_style="bold green", title="Booked Devices", show_lines=True)
-    table.add_column("Room", style="green")
-    table.add_column("Device", style="green")
-    table.add_column("Server", style="cyan")
-    table.add_column("Username", style="cyan")
-    table.add_column("Password", style="red")
-
-    for details in result.values():
-        table.add_row(details['room'], details['fullname'], details['server'], details['username'], details['password'])
-
-    console.print(table)
+    console.rule('Test Suite - sending erase command to all devices')
 
     # This queue holds log messages from the worker threads
     log_queue = multiprocessing.Queue(-1)
@@ -212,18 +208,14 @@ def multidevice(arguments: argparse.Namespace, console: rich.console) -> None:
     # This queue holds status updates from the worker threads
     progress_queue = multiprocessing.Queue()  # Queue used for reporting progress
 
-    processes: list[DeviceManager] = []
-    # for now short list of R1 and R3
-    for dev in result.values():
-        if dev['device'] in ['Router 1', 'Router 2', 'Router 3', 'Router 4']:
-#        if True:
-            console.print(f'Adding device {dev}')
-            processes.append(DeviceManager(CiscoDevice(f'{dev["server"]}.ict.swin.edu.au', dev['username'], dev['password']),
-                                           device_type='router',
-                                           log_queue=log_queue,
-                                           update_queue=progress_queue
-                                           )
-                             )
+    # Create a DeviceManager sub-process in processes list IF the device name starts with "Router", "Switch", or "ASA"
+    processes = [DeviceManager(device=CiscoDevice(f'{dev['server']}.ict.swin.edu.au', dev['username'], dev['password']),
+                               device_type=re.search(r'(Router)|^Switch|^ASA', dev['device']).group(0).lower(),
+                               description=f'{dev["room"]}:{dev["enclosure"]}-{dev["kit"]}-{dev["device"]}',
+                               full_description=f'{dev['room']}: {dev['fullname']}',
+                               log_queue=log_queue,
+                               update_queue=progress_queue)
+                 for dev in result.values() if any(map(dev['device'].startswith, ['Router', 'Switch', 'ASA']))]
 
     for p in processes: p.register_action('erase')
 
@@ -237,17 +229,28 @@ def multidevice(arguments: argparse.Namespace, console: rich.console) -> None:
     test = MultiDeviceManager(console, log_queue=log_queue, progress_queue=progress_queue)
     test.set_process_list(processes)
 
-    console.print(processes)
+    success, unsuccess = test.run_processes(15,
+                                            [DeviceActionCompleteEnum.CONNECTED, DeviceActionCompleteEnum.ENABLE, DeviceActionCompleteEnum.ERASED, DeviceActionCompleteEnum.FINISHED]
+                                            )
 
-    success, unsuccess = test.run_processes(30)
+    console.print()
+    console.rule('Test Complete - Displaying Results')
 
-    logger.info(f'Successful completions: {', '.join([task.name for task in success])}')
-    logger.info(f'Failed tasks: {', '.join([task.name for task in unsuccess])}')
+    outcome_tree = Tree(':checkered_flag: [bold blue]Test Results')
 
+    s = outcome_tree.add(':thumbs_up: [bold green]Successful completions')
+    if len(success) == 0:
+        s.add(':crying_face: [red]None')
+    else:
+        for task in success: s.add(f':computer: {task.full_description}')
 
+    u = outcome_tree.add(':thumbs_down: [bold red]Failed tasks')
+    if len(success) == 0:
+        u.add(':beaming_face_with_smiling_eyes: [bold yellow]None')
+    else:
+        for task in unsuccess: u.add(f':computer: {task.full_description}')
 
-
-#    console.print(result)
+    console.print(outcome_tree)
 
 
 def parse_arguments() -> argparse.Namespace:

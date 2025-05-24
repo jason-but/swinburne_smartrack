@@ -42,13 +42,13 @@ class DeviceActionCompleteEnum(Enum):
     CONNECTED = 'Connected devices'
     ENABLE = 'Devices in "enable" mode'
     COLLECTED = 'Completed data collections'
-    ERASED = 'Reset devices'
+    ERASED = 'Device with deleted configurations'
     RESTARTED = 'Restarted devices'
     FINISHED = 'Devices with all actions complete'
 
 
 class DeviceManager(multiprocessing.Process):
-    def __init__(self, device: CiscoDevice, device_type: str, update_queue: multiprocessing.Queue, log_queue: multiprocessing.Queue):
+    def __init__(self, device: CiscoDevice, device_type: str, description: str, full_description: str, update_queue: multiprocessing.Queue, log_queue: multiprocessing.Queue):
         """
         This class manages a device connection and corresponding commands related to the specific type of the device.
         It validates the type of the device upon instantiation to ensure compatibility with the management configuration.
@@ -59,7 +59,8 @@ class DeviceManager(multiprocessing.Process):
         :raises ValueError: If the device type does not exist in the SmartRack configuration file.
         """
         super().__init__()
-        self.name = 'DeviceManager(' + ':'.join(str(i) for i in self._identity) + ')'
+        self.description = description or 'DeviceManager(' + ':'.join(str(i) for i in self._identity) + ')'
+        self.full_description = full_description or self.description
 
         # Store multiprocessing queue variables
         self.__update_queue: multiprocessing.Queue = update_queue
@@ -77,6 +78,7 @@ class DeviceManager(multiprocessing.Process):
 
         # Establish logger for DeviceManager class - has to be done last as otherwise calling Configure() will delete the queue log handler
         self.__log = logging.getLogger('DeviceManager')
+        # self.__log = multiprocessing.get_logger()
         self.__log.addHandler(logging.handlers.QueueHandler(log_queue))
         self.__log.debug(f'Constructing Class')
 
@@ -93,7 +95,7 @@ class DeviceManager(multiprocessing.Process):
         :param command_list: The list of commands to execute on the device.
         """
         for command in command_list:
-            self.__log.info(f'Sending command "{command}"')
+            self.__log.info(f'({self.description}) Sending command "{command}"')
             self.__device.send_command(command)
 
     ##########
@@ -105,9 +107,9 @@ class DeviceManager(multiprocessing.Process):
 
         This method manages all the initialisation and must be called prior to running any of the following methods.
         """
-        self.__log.info(f'Establishing connection to {self.__type}')
+        self.__log.info(f'({self.description}) Establishing connection to {self.__type}')
         self.__device.connect()
-        self.__log.info(f'Setting device to enable mode')
+        self.__log.info(f'({self.description}) Setting device to enable mode')
         self.__device.set_enable_mode([], [])
 
     def register_action(self, action: str, *args, **kwargs) -> None:
@@ -120,7 +122,7 @@ class DeviceManager(multiprocessing.Process):
         :param args: Positional arguments required by the action method.
         :param kwargs: Keyword arguments required by the action method.
         """
-        self.__log.info(f'Registering action: {action}(args={args}, kwargs={kwargs})')
+        self.__log.info(f'({self.description}) Registering action: {action}(args={args}, kwargs={kwargs})')
         self.__actions[action] = {'method': getattr(self, action), 'args': args, 'kwargs': kwargs}
 
     def collect(self, out_dir: str = '.') -> None:
@@ -133,18 +135,18 @@ class DeviceManager(multiprocessing.Process):
         :param out_dir: The directory where configuration command outputs will be saved. If the
             directory does not exist, it will be created. Defaults to the current directory.
         """
-        self.__log.info(f'Collecting configurations')
+        self.__log.info(f'({self.description}) Collecting configurations')
 
-        self.__log.debug(f'Creating output directory {out_dir}')
+        self.__log.debug(f'({self.description}) Creating output directory {out_dir}')
         os.makedirs(out_dir, exist_ok=True)
 
         for command in self.__manage['collect']:
-            self.__log.info(f'Collecting output of command "{command}"')
+            self.__log.info(f'({self.description}) Collecting output of command "{command}"')
             filename = command.replace(' ', '_').replace('/', '_').replace('|', '-')
             with open(os.path.join(out_dir, filename), 'w') as file:
                 file.write(self.__device.capture_command(command, strip_excess_bangs=command in ['show run', 'sh run', 'sho run']))
 
-        self.__update_queue.put({'task': DeviceActionCompleteEnum.COLLECTED, 'message': f'Collected configurations for {self.name}'})
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.COLLECTED, 'message': f'Collected configurations for {self.description}'})
 
     def erase(self) -> None:
         """
@@ -152,9 +154,9 @@ class DeviceManager(multiprocessing.Process):
 
         NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
         """
-        self.__log.info(f'Erasing {self.__type}')
+        self.__log.info(f'({self.description}) Erasing {self.__type}')
         self._send_commands(self.__manage['erase'])
-        self.__update_queue.put({'task': DeviceActionCompleteEnum.ERASED, 'message': f'{self.name} - Deleted stored configurations'})
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.ERASED, 'message': f'{self.description} - Deleted stored configurations'})
 
     def restart(self) -> None:
         """
@@ -162,23 +164,23 @@ class DeviceManager(multiprocessing.Process):
 
         NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
         """
-        self.__log.info(f'Restarting {self.__type}')
+        self.__log.info(f'({self.description}) Restarting {self.__type}')
         self._send_commands(self.__manage['restart'])
-        self.__update_queue.put({'task': DeviceActionCompleteEnum.RESTARTED, 'message': f'{self.name} - Restarted'})
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.RESTARTED, 'message': f'{self.description} - Restarted'})
 
     def run(self) -> None:
         # Connect to device and update status
-        self.__log.info(f'Establishing connection to {self.__type}')
+        self.__log.info(f'({self.description}) Establishing connection to {self.__type}')
         self.__device.connect()
-        self.__update_queue.put({'task': DeviceActionCompleteEnum.CONNECTED, 'message': f'{self.name} - Connected to {self.__type} device'})
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.CONNECTED, 'message': f'{self.description} - Connected to {self.__type} device'})
 
         # Set device to enable mode and update status
-        self.__log.info(f'Setting device to enable mode')
+        self.__log.info(f'({self.description}) Setting device to enable mode')
         self.__device.set_enable_mode([], [])
-        self.__update_queue.put({'task': DeviceActionCompleteEnum.ENABLE, 'message': f'{self.name} - Device in "enable" mode'})
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.ENABLE, 'message': f'{self.description} - Device in "enable" mode'})
 
         for action in self.__actions.values():
-            self.__log.info(f'Executing action: {action["method"].__name__}')
+            self.__log.info(f'({self.description}) Executing action: {action["method"].__name__}')
             action['method'](*action['args'], **action['kwargs'])
 
-        self.__update_queue.put({'task': DeviceActionCompleteEnum.FINISHED, 'message': f'{self.name} - Finished all actions'})
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.FINISHED, 'message': f'{self.description} - Finished all actions'})

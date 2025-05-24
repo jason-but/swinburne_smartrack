@@ -88,8 +88,10 @@ class SmartRack:
                     # Split as '*****(<enclosure>)*****(<kit>) <device>'
                     sub_details = re.search(r'^[\w\s]+\((?P<enclosure>\w+)[)\w\s]+\((?P<kit>\w+)\) (?P<device>[\w\s]+)', details[5])
                     if sub_details is None:
-                        self.__log.warning(f'Cannot extract device details from: {unique_name}')
-                        continue
+                        sub_details = re.search(r'^[\w\s]+\((?P<enclosure>\w+)\) (?P<device>[\w\s]+)', details[5])
+                        if sub_details is None:
+                            self.__log.warning(f'Cannot extract device details from: {unique_name}')
+                            continue
 
                     if '_' in details[7]:
                         student, nickname = details[7].split('_', maxsplit=1)
@@ -102,7 +104,7 @@ class SmartRack:
                                                    'password':  details[3],
                                                    'fullname':  details[5],
                                                    'enclosure': sub_details.group('enclosure'),
-                                                   'kit':       sub_details.group('kit'),
+                                                   'kit':       sub_details.group('kit') if 'kit' in sub_details.groupdict() else '',
                                                    'device':    sub_details.group('device'),
                                                    'student':   student,
                                                    'nickname':  nickname
@@ -110,9 +112,7 @@ class SmartRack:
                     self.__log.info(f'{unique_name}')
                     self.__log.debug(f'Details: {self.__devices[unique_name]}')
 
-                self.__console.print(f'Retrieved {len(split_response)} devices for {room}')
-
-    def filter(self, enclosures: list[str] = ['Black', 'Red', 'Blue', 'Green', 'Yellow'], kits: list[str] = ['Yellow', 'Green', 'Orange', 'Purple', 'White'], devices: list[str] = ['Switch 1', 'Switch 2', 'Switch 3', 'Switch 4', 'Router 1', 'Router 2', 'Router 3', 'Router 4']) -> dict[str, dict[str, str]]:
+    def filter(self, enclosures: list[str] = ['Black', 'Red', 'Blue', 'Green', 'Yellow'], kits: list[str] = ['Yellow', 'Green', 'Orange', 'Purple', 'White', ''], devices: list[str] = ['Switch 1', 'Switch 2', 'Switch 3', 'Switch 4', 'Router 1', 'Router 2', 'Router 3', 'Router 4', 'ASA 1', 'ASA 2', 'ASA 3', 'ASA 4', 'ASA 5']) -> dict[str, dict[str, str]]:
         """
         :param enclosures: List of strings of Enclosures we are interested in
         :param kits: List of strings of Kits we are interested in
