@@ -85,22 +85,14 @@ If you wish to develop your own applications using the swinburne_smartrack packa
 that all the library files and classes are fully documented and can be accessed via the Python
 help() function.
 
-The classes that can be imported via ```code import swinburne_smartrack``` are:
+The classes that can be imported via ```import swinburne_smartrack``` are:
 
-1) ```code Configuration```
-2) ```code SmartRack```
-3) ```code SmartRackTUI```
-4) ```code CiscoDevice```
-5) ```code DeviceManager```
-6) ```code MultiDeviceManager```
-
-It is expected that the user will use this package via installed programs as listed above. There
-are two reasons to read the information in the **Libraries** section:
-
-1) Testing installation prior to actual use/deployment
-2) Developing new applications that use the internal libraries
- 
-### SmartRack
+1) ```Configuration``` - Singleton class to read SmartRack configuration toml file and make parameters available.
+2) ```SmartRack``` - Class to download booked device connection information from SmartRack and to filter devices for selection.
+3) ```SmartRackTUI``` - Text-based User Interface to query User for SmartRack information, and then return a SmartRack device with booked devices.
+4) ```CiscoDevice``` - Class to manage connection and control of a remotely connected (via ssh) Cisco Device.
+5) ```DeviceManager``` - Implements a multiprocessing sub-process to manage a Cisco Device to perform a set of registered tasks.
+6) ```MultiDeviceManager``` - Manage multiple DeviceManager classes running in parallel along with a console display to update progress.
 
 #### Testing
 
