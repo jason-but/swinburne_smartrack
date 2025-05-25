@@ -208,8 +208,13 @@ class DeviceManager(multiprocessing.Process):
         Recreates a new instance of the DeviceManager with the current object's attributes.
 
         If the DeviceManager process is terminated early, or fails, it cannot be restarted to try again. Therefore, this method returns a new instance
-        of the same sub-process that can be restarted to re-try the failed attempt.
+        of the same sub-process that can be restarted to re-try the failed attempt. This method will create a fresh instance of the DeviceManager.
+        It reinitializes all attributes, registered actions, and other parameters to ensure that the same tasks will be attempted when restarting the
+        sub-process.
 
-        :return: A new instance of DeviceManager initialized with the current object's attributes.
+        :return: A new instance of the DeviceManager initialized with the current object's attributes.
         """
-        return DeviceManager(self.__device, self.__type, self.description, self.full_description, self.__update_queue, self.__log_queue)
+        self.__log.info(f'({self.description}) Recreating DeviceManager instance')
+        result = DeviceManager(self.__device, self.__type, self.description, self.full_description, self.__update_queue, self.__log_queue)
+        for action, params in self.__actions.items(): result.register_action(action, *params['args'], **params['kwargs'])
+        return result

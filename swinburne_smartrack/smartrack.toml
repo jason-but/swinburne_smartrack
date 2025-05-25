@@ -32,20 +32,20 @@ url = "https://ictencsvr11.ict.swin.edu.au/agent/get_all.php"
 # Commands to collect/erase-config/restart a router
 [manage.router]
 collect = [ "sh run", "sh ip int brief", "sh ip route" , "sh access-lists", "sh ip dhcp binding", "sh ip dhcp pool", "sh ip ospf neighbour", "sh ip ospf" ]
-erase = [ "erase startup-config" ]
-restart = [ "reload", "no" ]
+erase = [ "erase startup-config", "", "" ]
+restart = [ "reload", "", "", "no", "", "" ]
 
 # Commands to collect/erase-config/restart a switch
 [manage.switch]
 collect = [ "sh run", "sh ip int brief", "sh vlan brief", "sh int trunk", "sh vlan brief", "sh port-security", "sh spanning-tree" ]
-erase = [ "erase startup-config", "delete vlan.dat" ]
-restart = [ "reload", "no" ]
+erase = [ "erase startup-config", "", "", "delete vlan.dat", "", "", "" ]
+restart = [ "reload", "", "", "no", "", "" ]
 
 # Commands to collect/erase-config/restart an ASA firewall
 [manage.asa]
 collect = [ "sh run", "sh ip int brief" ]
-erase = [ "write erase" ]
-restart = [ "reload", "no" ]
+erase = [ "write erase", "", "" ]
+restart = [ "reload", "", "", "no", "", "" ]
 
 ################################################################################
 ## Code Debugging, set log level for each module below to override default app debug level, valid levels are DEBUG, INFO, WARNING, ERROR

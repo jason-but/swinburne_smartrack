@@ -240,69 +240,58 @@ def multidevice(arguments: argparse.Namespace, console: rich.console) -> None:
     try:
         tui = SmartRackTUI(console)
         smartrack = tui.ui('Please select which rooms you would like to test this library with')
+
+        # Retrieve list (no filter, get all devices)
+        result = smartrack.filter()
+
+        # Display all devices in table
+        display_booked_devices(result, console)
+
+        console.print()
+        console.rule('Test Suite - sending erase command to all devices')
+
+        # This queue holds log messages from the worker threads
+        log_queue = multiprocessing.Queue(-1)
+
+        # This queue holds status updates from the worker threads
+        progress_queue = multiprocessing.Queue()  # Queue used for reporting progress
+
+        # Create a DeviceManager sub-process in processes list IF the device name starts with "Router", "Switch", or "ASA"
+        processes = [DeviceManager(device=CiscoDevice(f'{dev['server']}.ict.swin.edu.au', dev['username'], dev['password']),
+                                   device_type=re.search(r'(Router)|^Switch|^ASA', dev['device']).group(0).lower(),
+                                   description=f'{dev["room"]}:{dev["enclosure"]}-{dev["kit"]}-{dev["device"]}',
+                                   full_description=f'{dev['room']}: {dev['fullname']}',
+                                   log_queue=log_queue,
+                                   update_queue=progress_queue)
+                     for dev in result.values() if any(map(dev['device'].startswith, ['Router', 'Switch', 'ASA']))]
+
+        for p in processes: p.register_action('erase')
+
+        logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
+                            handlers=[rich.logging.RichHandler(markup=True, console=console)],
+                            level=getattr(logging, arguments.debug)
+                            )
+
+        # Execute all processes using the MultiDeviceManager with a timeout of 30 seconds
+        test = MultiDeviceManager(console, log_queue=log_queue, progress_queue=progress_queue)
+        test.set_process_list(processes)
+        test.execute_processes(30,
+                               'Multi Device Test',
+                               'test',
+                               True,
+                               )
+
     except SmartRackTUI.TerminateApp:
         console.clear()
         console.print(Panel('Terminating SmartRack Multi-Device Control Test Suite', style='bold red'))
-        return
 
-    # Retrieve list (no filter, get all devices)
-    result = smartrack.filter()
-
-    # Display all devices in table
-    display_booked_devices(result, console)
-
-    console.print()
-    console.rule('Test Suite - sending erase command to all devices')
-
-    # This queue holds log messages from the worker threads
-    log_queue = multiprocessing.Queue(-1)
-
-    # This queue holds status updates from the worker threads
-    progress_queue = multiprocessing.Queue()  # Queue used for reporting progress
-
-    # Create a DeviceManager sub-process in processes list IF the device name starts with "Router", "Switch", or "ASA"
-    processes = [DeviceManager(device=CiscoDevice(f'{dev['server']}.ict.swin.edu.au', dev['username'], dev['password']),
-                               device_type=re.search(r'(Router)|^Switch|^ASA', dev['device']).group(0).lower(),
-                               description=f'{dev["room"]}:{dev["enclosure"]}-{dev["kit"]}-{dev["device"]}',
-                               full_description=f'{dev['room']}: {dev['fullname']}',
-                               log_queue=log_queue,
-                               update_queue=progress_queue)
-                 for dev in result.values() if any(map(dev['device'].startswith, ['Router', 'Switch', 'ASA']))]
-
-    for p in processes: p.register_action('erase')
-
-    logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',
-                        handlers=[rich.logging.RichHandler(markup=True, console=console)],
-                        level=getattr(logging, arguments.debug)
-                        )
-
-    # Execute all processes using the MultiDeviceManager with a timeout of 30 seconds
-    test = MultiDeviceManager(console, log_queue=log_queue, progress_queue=progress_queue)
-    test.set_process_list(processes)
-
-    success, unsuccess = test.run_processes(30,
-                                            [DeviceActionCompleteEnum.CONNECTED, DeviceActionCompleteEnum.ENABLE, DeviceActionCompleteEnum.ERASED, DeviceActionCompleteEnum.FINISHED]
-                                            )
-
-    # Display results of test
-    console.print()
-    console.rule('Test Complete - Displaying Results')
-
-    outcome_tree = Tree(':checkered_flag: [bold blue]Test Results')
-
-    s = outcome_tree.add(':thumbs_up: [bold green]Successful completions')
-    if len(success) == 0:
-        s.add(':crying_face: [red]None')
-    else:
-        for task in success: s.add(f':computer: {task.full_description}')
-
-    u = outcome_tree.add(':thumbs_down: [bold red]Failed tasks')
-    if len(success) == 0:
-        u.add(':beaming_face_with_smiling_eyes: [bold yellow]None')
-    else:
-        for task in unsuccess: u.add(f':computer: {task.full_description}')
-
-    console.print(outcome_tree)
+    except MultiDeviceManager.TerminateManager as e:
+        # Not all devices passed the test
+        console.print()
+        console.rule(e.args[0])
+        outcome_tree = Tree(':thumbs_down: [bold red]Failed tasks')
+        for msg in e.args[1]: outcome_tree.add(f' :computer: {msg}')
+        console.print(outcome_tree)
 
 
 def parse_arguments() -> argparse.Namespace:
