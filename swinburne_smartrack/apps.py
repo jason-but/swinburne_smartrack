@@ -53,7 +53,7 @@ def smartrack_config() -> None:
 
     try:
         # Parse all command line arguments, if the '-c' argument exists, load the Configuration file now, otherwise it will be loaded by the submodules using default properties
-        arguments = smartrack_clean_argparse()
+        arguments = smartrack_config_argparse()
         if arguments.config_file: Configuration(arguments.config_file)
 
         console.print(Panel('Cisco Device Test Suite', style='bold green'))
@@ -79,7 +79,7 @@ def smartrack_config() -> None:
                 m_branch.add(Group(f' {action}', Syntax('\n'.join(commands), 'null', theme='monokai', line_numbers=True)))
 
         # Create and print table
-        semester_table = Table(title=":calendar: Semester Suffix in collection directory based on current Month", show_lines=True)
+        semester_table = Table(title=":calendar: Semester Suffix in collection directory based on current Month", show_header=False, show_lines=True)
         semester_table.add_row('[bold green]Month:', *list(calendar.month_abbr)[1:])
         semester_table.add_row('[bold green]Suffix:', *Configuration().skills['semester_map'])
 
@@ -163,12 +163,15 @@ def smartrack_clean() -> None:
         progress_queue = multiprocessing.Queue()  # Queue used for reporting progress
 
         # Create a DeviceManager sub-process in processes list IF the device name starts with "Router", "Switch", or "ASA"
-        processes = [DeviceManager(device=CiscoDevice(f'{dev['server']}.ict.swin.edu.au', dev['username'], dev['password']),
+        processes = [DeviceManager(device=CiscoDevice(f'{dev['server']}.ict.swin.edu.au', dev['username'], dev['password'], ),
                                    device_type=re.search(r'(Router)|^Switch|^ASA', dev['device']).group(0).lower(),
                                    description=f'{dev["room"]}:{dev["enclosure"]}-{dev["kit"]}-{dev["device"]}',
                                    full_description=f'{dev['room']}: {dev['fullname']}',
                                    log_queue=log_queue,
-                                   update_queue=progress_queue)
+                                   update_queue=progress_queue,
+                                   usernames=Configuration().manage['usernames'] if 'usernames' in Configuration().manage else None,
+                                   passwords=Configuration().manage['passwords'] if 'passwords' in Configuration().manage else None
+                                   )
                      for dev in devices.values() if any(map(dev['device'].startswith, ['Router', 'Switch', 'ASA']))]
 
         # Register to delete all configurations for all processes

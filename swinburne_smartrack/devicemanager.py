@@ -48,7 +48,7 @@ class DeviceManager(multiprocessing.Process):
      - erase: Delete all configurations on the device
      - restart: Reload the device
     """
-    def __init__(self, device: CiscoDevice, device_type: str, description: str, full_description: str, update_queue: multiprocessing.Queue, log_queue: multiprocessing.Queue):
+    def __init__(self, device: CiscoDevice, device_type: str, description: str, full_description: str, update_queue: multiprocessing.Queue, log_queue: multiprocessing.Queue, usernames: list[str] = None, passwords: list[str] = None):
         """
         Initializes an instance of the DeviceManager class, which manages a Cisco device connection and device-specific functionalities.
 
@@ -81,6 +81,8 @@ class DeviceManager(multiprocessing.Process):
         self.__type = device_type
         self.__manage: dict[str, list[str]] = Configuration().manage[device_type]
         self.__actions: dict[str, Any] = {}
+        self.__usernames = usernames
+        self.__passwords = passwords
 
         # Create shared variable so parent process can know of successful completion
         self.__complete = multiprocessing.Value('b', False)
@@ -205,7 +207,7 @@ class DeviceManager(multiprocessing.Process):
 
         # Set device to enable mode and update status
         self.__log.info(f'({self.description}) Setting device to enable mode')
-        self.__device.set_enable_mode([], [])
+        self.__device.set_enable_mode(self.__usernames, self.__passwords)
         self.__update_queue.put({'task': DeviceActionCompleteEnum.ENABLE, 'message': f'{self.description} - Device in "enable" mode'})
 
         for action in self.__actions.values():
@@ -228,6 +230,6 @@ class DeviceManager(multiprocessing.Process):
         :return: A new instance of the DeviceManager initialized with the current object's attributes.
         """
         self.__log.info(f'({self.description}) Recreating DeviceManager instance')
-        result = DeviceManager(self.__device, self.__type, self.description, self.full_description, self.__update_queue, self.__log_queue)
+        result = DeviceManager(self.__device, self.__type, self.description, self.full_description, self.__update_queue, self.__log_queue, self.__usernames, self.__passwords)
         for action, params in self.__actions.items(): result.register_action(action, *params['args'], **params['kwargs'])
         return result
