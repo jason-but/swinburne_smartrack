@@ -73,7 +73,7 @@ class MultiDeviceManager:
 
         message.extend([task.full_description for task in self.__processes])
 
-        if self.__dialog.yesno('\n'.join(message), title=' Unsuccessful Devices ', width=60, height=len(message) + 7) != self.__dialog.OK:
+        if self.__dialog.yesno('\n'.join(message), title=' Unsuccessful Devices ', no_collapse=True, width=80, height=len(message) + 7) != self.__dialog.OK:
             raise MultiDeviceManager.TerminateManager('Terminating application - User chose to terminate the application prior to completion of all tasks.',
                                                       [task.full_description for task in self.__processes]
                                                       )

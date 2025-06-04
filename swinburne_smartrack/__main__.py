@@ -134,7 +134,8 @@ def ciscodevice(arguments: argparse.Namespace, console: rich.console) -> None:
     console.rule('Connecting to Cisco Device in enable mode')
     test_device = CiscoDevice(arguments.hostname, arguments.username, arguments.password, arguments.port)
     test_device.connect()
-    test_device.set_enable_mode(usernames=[], passwords=[])
+    test_device.set_enable_mode(usernames=['dragi', 'jason'], passwords=['bad_pass', 'pass', 'ena_pass'])
+    return
 
     console.print()
     console.rule('Capturing Interface Configuration')
@@ -351,5 +352,8 @@ if __name__ == '__main__':
 
     except KeyboardInterrupt as err:
         pass
+    except CiscoDevice.AuthError as err:
+        console.print()
+        console.print(Panel(f'ERROR: {err}', style='bold red'))
     except (Exception,):
-        rich.console.Console().print_exception()
+        console.print_exception()

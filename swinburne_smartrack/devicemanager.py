@@ -82,9 +82,11 @@ class DeviceManager(multiprocessing.Process):
         self.__manage: dict[str, list[str]] = Configuration().manage[device_type]
         self.__actions: dict[str, Any] = {}
 
+        # Create shared variable so parent process can know of successful completion
+        self.__complete = multiprocessing.Value('b', False)
+
         # Establish logger for DeviceManager class - has to be done last as otherwise calling Configure() will delete the queue log handler
         self.__log = logging.getLogger('DeviceManager')
-        # self.__log = multiprocessing.get_logger()
         self.__log.addHandler(logging.handlers.QueueHandler(log_queue))
         self.__log.debug(f'Constructing Class')
 
@@ -117,6 +119,15 @@ class DeviceManager(multiprocessing.Process):
     ##########
     # PUBLIC METHODS
     ##########
+    @property
+    def process_complete(self) -> bool:
+        """
+        Returns True if the process has completed as stored in the multiprocess shared variable self.__complete.
+
+        :return: Boolean representation of number stored in self.__complete.
+        """
+        return bool(self.__complete.value)
+
     def register_action(self, action: str, *args, **kwargs) -> None:
         """
         Registers an action with its corresponding method and arguments into the internal actions registry.
@@ -201,6 +212,8 @@ class DeviceManager(multiprocessing.Process):
             self.__log.info(f'({self.description}) Executing action: {action["method"].__name__}')
             action['method'](*action['args'], **action['kwargs'])
 
+        with self.__complete.get_lock():
+            self.__complete.value = True
         self.__update_queue.put({'task': DeviceActionCompleteEnum.FINISHED, 'message': f'{self.description} - Finished all actions'})
 
     def recreate(self) -> 'DeviceManager':

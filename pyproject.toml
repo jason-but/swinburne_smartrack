@@ -4,7 +4,7 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "swinburne-smartrack"
-version = "0.0.5"
+version = "0.0.6"
 authors = [
   { name="Jason But", email="jbut@swin.edu.au" },
 ]
@@ -20,6 +20,7 @@ license-files = ["LICEN[CS]E*"]
 dependencies = ["logging", "paramiko", "pythondialog", "requests", "rich"]
 
 [project.scripts]
+smartrack_config = "swinburne_smartrack.apps:smartrack_config"
 smartrack_clean = "swinburne_smartrack.apps:smartrack_clean"
 
 [project.urls]

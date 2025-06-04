@@ -71,6 +71,7 @@ class Configuration:
 
                         assert 'smartrack_servers' in self.config, 'TOML Configuration file does not contain the "smartrack_servers" section'
                         assert 'manage' in self.config, 'TOML Configuration file does not contain the "manage" section'
+                        assert 'skills' in self.config, 'TOML Configuration file does not contain the "skills" section'
 
                         if 'debug' in self.config:
                             logging.config.dictConfig(self.config['debug'])
@@ -101,3 +102,12 @@ class Configuration:
         :return: The value associated with the 'manage' key in the configuration dictionary.
         """
         return self.config['manage']
+
+    @property
+    def skills(self):
+        """
+        Retrieves the configuration value for 'skills' as a class property.
+
+        :return: The value associated with the 'skills' key in the configuration dictionary.
+        """
+        return self.config['skills']

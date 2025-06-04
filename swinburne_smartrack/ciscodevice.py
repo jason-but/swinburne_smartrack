@@ -7,6 +7,8 @@ import time
 import re
 import logging
 import paramiko
+import itertools
+from enum import Enum, auto
 
 # TODO: username/password parsing in set_enable_mode()
 # TODO: Implement comments for set_enable_mode()
@@ -19,17 +21,51 @@ class CiscoDevice:
     This class provides utilities for managing network devices, including sending commands, enabling privileged mode, capturing responses,
     and uploading configurations. It aims to streamline communication and execution of commands on Cisco devices while maintaining proper internal states.
     """
+    class AuthError(Exception):
+        """
+        This exception is raised when there is an issue with user authentication or authorization. It is intended to encapsulate information related to
+        authentication errors and can be used to signal problems with access control or identity validation.
+        """
+        pass
+
+    class ConsoleState(Enum):
+        """
+        The ConsoleState class implements an enumeration of console states. Used to identify the specific state of the connected device.
+
+        :ivar ConsoleUnknown: Initial state - the current state of the connected console is unknown.
+        :ivar ConsoleUser: The connected console is in user mode ">".
+        :ivar ConsoleEnable: The connected console is in user mode "#".
+        :ivar ConsoleConfig: The connected console is in a configuration or sub-configuration mode ")#".
+        :ivar ConsoleAuthUser: The connected console attempting to enter user mode ">".
+        :ivar ConsoleAuthEnable: The connected console attempting to enter enable mode "#".
+        """
+        ConsoleUnknown = auto()
+        ConsoleUser = auto()
+        ConsoleEnable = auto()
+        ConsoleConfig = auto()
+        ConsoleAuthUser = auto()
+        ConsoleAuthEnable = auto()
 
     # Static variable containing lookup tables for responses to prompts to help state machine progress the connection into "enable" mode
     prompts = {'>': 'ena\r\n',
                'Would you like to enter the initial configuration dialog? [yes/no]: ': 'no\r\n',
                'Would you like to terminate autoinstall? [yes]:': 'yes\r\n',
-               'Press RETURN to get started!': '\r\n',
+               'Press RETURN to get started.': '\r\n',
                'tcl)#': 'exit\r\n',
                ')#': 'end\r\n',
                '--More--': 'q',
                '<--- More --->': 'q'
                }
+
+    prompt_state_machine = {'>': ConsoleState.ConsoleUser,
+                            'Would you like to enter the initial configuration dialog? [yes/no]: ': ConsoleState.ConsoleUnknown,
+                            'Would you like to terminate autoinstall? [yes]:': ConsoleState.ConsoleUnknown,
+                            'Press RETURN to get started.': ConsoleState.ConsoleUnknown,
+                            'tcl)#': ConsoleState.ConsoleConfig,
+                            ')#': ConsoleState.ConsoleConfig,
+                            '--More--': ConsoleState.ConsoleConfig,
+                            '<--- More --->': ConsoleState.ConsoleConfig
+                            }
 
     def __init__(self, hostname: str, username: str, password: str, port: int = 22):
         """
@@ -68,6 +104,7 @@ class CiscoDevice:
 
         # Create the variable to hold the device enable prompt
         self.__enable_prompt = ''
+        self.__console_state = CiscoDevice.ConsoleState.ConsoleUnknown
 
     ##########
     # PRIVATE METHODS
@@ -256,38 +293,73 @@ class CiscoDevice:
         self.__log.info('Waking up device')
         self._send_text('\r\n')
 
-        next_username = 0
-        next_password = 0
+        auth_attempts = {CiscoDevice.ConsoleState.ConsoleUnknown: iter(passwords.copy()),
+                         CiscoDevice.ConsoleState.ConsoleAuthUser: itertools.product(usernames.copy(), passwords.copy()),
+                         CiscoDevice.ConsoleState.ConsoleAuthEnable: iter(passwords.copy())}
+        user_password = None
 
+        self.__log.info(f'Initial console state: {self.__console_state}')
         while True:
             current_prompt = self._obtain_current_prompt()
             self.__log.info(f'Current Prompt: "{current_prompt}"')
 
+            prompt_state = [new_state for prompt, new_state in CiscoDevice.prompt_state_machine.items() if current_prompt.endswith(prompt)]
             prompt_response = [(prompt, response) for prompt, response in CiscoDevice.prompts.items() if current_prompt.endswith(prompt)]
 
             if len(prompt_response) > 0:
+                self.__console_state = prompt_state[0]
+                self.__log.info(f'Console state: {self.__console_state}')
                 prompt, response = prompt_response[0]
                 self.__log.info(f'Current Prompt ends with "{prompt}", sending response: "{response}"'.replace('\n', '\\n'))
                 self._send_text(response)
                 continue
 
-            # Device is asking for a username, try the next one in the list
-            if current_prompt.endswith('username'):
-                try_username = usernames[next_username] if len(usernames) > 0 else ''
-                next_username += 1 if next_username < len(usernames) else 0
-                self.__log.info('Device is asking for a username, trying {try_username}')
-                self.send_command(try_username)
+            # Device is asking for a username
+            if current_prompt.endswith('Username: '):
+                try:
+                    # Only happens when NOT in user or enable mode and a console username/password account is in use, set state
+                    self.__console_state = CiscoDevice.ConsoleState.ConsoleAuthUser
+                    self.__log.info(f'Console state: {self.__console_state}')
 
-            # Device is asking for a password, try the next one in the list
-            if current_prompt.endswith('Password:'):
-                try_password = passwords[next_password] if len(passwords) > 0 else ''
-                next_password += 1 if next_password < len(passwords) else 0
-                self.__log.info('Device is asking for a username, trying {try_password}')
-                self.send_command(try_password)
+                    # Get the next combination of usernames/passwords, store password as we will need it for next loop
+                    try_username, user_password = next(auth_attempts[self.__console_state])
+                    self.__log.info(f'Device is asking for a username, next username/password attempt is "{try_username}"/"{user_password}"')
+                    self.send_command(try_username)
+                    continue
+                except StopIteration:
+                    # No more username/password combinationss to try
+                    self.__log.error(f'Provided username/password list exhausted')
+                    raise CiscoDevice.AuthError('Authentication error attempting to put device in enable mode')
+
+            # Device is asking for a password
+            if current_prompt.endswith('Password: '):
+                try:
+                    # If we were in ConsoleUser(>) mode, we have sent "ena" and the device has an enable password, therefore we are now in ConsoleAuthEnable mode
+                    if self.__console_state == CiscoDevice.ConsoleState.ConsoleUser:
+                        self.__console_state = CiscoDevice.ConsoleState.ConsoleAuthEnable
+                        self.__log.info(f'Console state: {self.__console_state}')
+
+                    # user_password is set if we were in ConsoleAuthMode and have entered username, otherwise we get the next password in the list and reset user_password
+                    try_password = user_password or next(auth_attempts[self.__console_state])
+                    user_password = None
+
+                    # Sending password
+                    self.__log.info(f'Device is asking for a password, trying "{try_password}"')
+                    self.send_command(try_password)
+                    continue
+                except KeyError:
+                    # Bug in the state machine
+                    self.__log.error(f'Device is asking for a password, but cannot handle state {self.__console_state}')
+                    raise CiscoDevice.AuthError('Authentication error attempting to put device in enable mode')
+                except StopIteration:
+                    # No more passwords to try
+                    self.__log.error(f'Provided password list exhausted')
+                    raise CiscoDevice.AuthError('Authentication error attempting to put device in enable mode')
 
             # No matching prompt for state machine to handle, if prompt ends with #, we are in enable mode and we can return
             if current_prompt.endswith('#'):
-                self.__log.info('Device is in enable mode')
+                self.__console_state = CiscoDevice.ConsoleState.ConsoleEnable
+                self.__log.info(f'Current console state: {self.__console_state}')
                 self.__enable_prompt = current_prompt
                 self.__log.info(f'Storing Enable Prompt: "{self.__enable_prompt}"')
                 self.__log.info('Disabling paging and debug commands')

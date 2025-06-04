@@ -28,6 +28,7 @@ url = "https://ictencsvr11.ict.swin.edu.au/agent/get_all.php"
 ## restart       - List of commands to send to device to reload the device
 ################################################################################
 [manage]
+passwords = [ "pass1", "pass2" ]
 
 # Commands to collect/erase-config/restart a router
 [manage.router]
@@ -46,6 +47,11 @@ restart = [ "reload", "", "", "no", "", "" ]
 collect = [ "sh run", "sh ip int brief" ]
 erase = [ "write erase", "", "" ]
 restart = [ "reload", "", "", "no", "", "" ]
+
+################################################################################
+################################################################################
+[skills]
+semester_map = [ "Sum", "Sum", "Sum", "S1", "S1", "S1", "S1", "S1", "S2", "S2", "S2", "S2" ]
 
 ################################################################################
 ## Code Debugging, set log level for each module below to override default app debug level, valid levels are DEBUG, INFO, WARNING, ERROR
