@@ -56,43 +56,65 @@ def smartrack_config() -> None:
         arguments = smartrack_config_argparse()
         if arguments.config_file: Configuration(arguments.config_file)
 
-        console.print(Panel('Cisco Device Test Suite', style='bold green'))
+        console.print(Panel('Cisco Smartrack Configuration', style='bold green'))
         console.print()
 
-        # Construct display for server information
-        server_tree = Tree('⚙️ SmartRack Servers')
+        # Display server information
+        console.rule('SmartRack Servers descriptions and URLs')
         for server, value in Configuration().smartrack_servers.items():
-            s_branch = server_tree.add(f':computer: {server}')
-            s_branch.add(f'📝 {value['description']}')
-            s_branch.add(f':earth_asia: {value['url']}')
+            server_tree = Tree(f'⚙️ {server} ({value['description']})')
+            server_tree.add(f':earth_asia: {value['url']}')
+            console.print(server_tree)
+        console.print()
 
-        # Construct display for Device Management information
-        manage_tree = Tree('⚙️ Device Management')
-        if 'usernames' in Configuration().manage:
-            manage_tree.add(Group(f'👨‍ Usernames:', Syntax('\n'.join(Configuration().manage["usernames"]), 'null', theme='monokai', line_numbers=True)))
-        if 'passwords' in Configuration().manage:
-            manage_tree.add(Group(f'👨‍ Passwords:', Syntax('\n'.join(Configuration().manage["passwords"]), 'null', theme='monokai', line_numbers=True)))
-        for device_type, parameters in Configuration().manage.items():
-            if device_type in ['usernames', 'passwords']: continue
-            m_branch = manage_tree.add(f'🔀 {device_type}')
-            for action, commands in parameters.items():
-                m_branch.add(Group(f' {action}', Syntax('\n'.join(commands), 'null', theme='monokai', line_numbers=True)))
-
-        # Create and print table
-        semester_table = Table(title=":calendar: Semester Suffix in collection directory based on current Month", show_header=False, show_lines=True)
-        semester_table.add_row('[bold green]Month:', *list(calendar.month_abbr)[1:])
-        semester_table.add_row('[bold green]Suffix:', *Configuration().skills['semester_map'])
-
-        console.rule('SmartRack Servers')
-        console.print('SmartRack Server descriptions and URLs')
-        console.print(server_tree)
-
+        # Display Device Management information
         console.rule('Automated Cisco Device Management')
-        console.print('Information to access and manage the Cisco Devices Remotely')
-        console.print(manage_tree)
 
-        console.rule('Skills Collection Month to Semester Mapping')
-        console.print(semester_table)
+        # Authentication configuration
+        auth_config = [(device_type, parameters) for device_type, parameters in Configuration().manage.items() if device_type in ['usernames', 'passwords']]
+        action_config = [(device_type, parameters) for device_type, parameters in Configuration().manage.items() if device_type not in ['usernames', 'passwords']]
+
+        manage_tree = Tree('⚙️ Automated Cisco Device Management')
+        if len(auth_config) > 0:
+            auth_tree = Tree('🔒 Default authentication parameters')
+            if 'usernames' in Configuration().manage:
+                auth_tree.add(Group(f'👨‍ Usernames:', Syntax('\n'.join(Configuration().manage["usernames"]), 'null', theme='monokai', line_numbers=True)))
+            if 'passwords' in Configuration().manage:
+                auth_tree.add(Group(f'🔑 Passwords:', Syntax('\n'.join(Configuration().manage["passwords"]), 'null', theme='monokai', line_numbers=True)))
+            console.print(auth_tree)
+            console.print()
+
+        if len(action_config) > 0:
+            action_tree = Tree('🏃 Default action commands for device types')
+            for device_type, parameters in Configuration().manage.items():
+                if device_type in ['usernames', 'passwords']: continue
+                m_branch = action_tree.add(f'🔀 {device_type}')
+                cmd_table = Table(show_lines=True, expand=True)
+                for action in parameters.keys(): cmd_table.add_column(action, ratio=1)
+
+                cmd_table.add_row(*[Syntax('\n'.join(cmd), 'null', theme='monokai', line_numbers=True) for cmd in parameters.values()])
+
+                m_branch.add(cmd_table)
+
+            console.print(action_tree)
+        else:
+            console.print(Panel('ERROR: No device actions configured in system configuration', style='bold red'))
+
+        console.print()
+
+
+        # Display Semester Mapping Calendar
+        console.rule('Skills Collection Configuration')
+        if 'semester_map' in Configuration().skills:
+            semester_tree = Tree(':calendar: Semester Suffix in collection directory based on current Month')
+            semester_table = Table('[bold green]Month:', *list(calendar.month_abbr)[1:], show_lines=True)
+            semester_tree.add(semester_table)
+            semester_table.add_row('[bold green]Suffix:', *Configuration().skills['semester_map'])
+            console.print(semester_tree)
+        else:
+            console.print(Panel('ERROR: No \'semester_map\' value configured in [skills] section of system configuration', style='bold red'))
+
+        console.print()
 
     except (Exception,):
         # Use rich to display any other exceptions
