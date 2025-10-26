@@ -95,7 +95,6 @@ class SkillsSession:
         self.__log.info('Running Exam Collection')
         self._retrieve_devices()
 
-#        exam_session = SkillsCollect(self.__devices, self.__exam_details, self.__solution_file, self.__exam_options, None)
         exam_session = SkillsCollect(device_db=self.__devices, exam_details=self.__exam_details, solution_file=self.__solution_file,
                                      exam_options=self.__exam_options, preset_options=self.__preset_options)
 
@@ -110,4 +109,5 @@ class SkillsSession:
             exam_session.collect(self.__exam_collect_timeout)
 
         self.__console.clear()
-        self.__console.print('Finished collection')
+        self.__console.print(Panel('Finished collection', style='bold green'))
+        self.__console.print()
