@@ -1,24 +1,39 @@
+"""
+This module implements the StudentCollect class which is used to manage collection of all configurations for a single student following an exam. The class
+creates all support collection files as well.
+"""
+
+# Import System Libraries
 import logging
 import pathlib
 import multiprocessing
 import re
 import shutil
 import configparser
-
 import tomli_w
 import dialog
 
+# Import SmartRackLibrary modules
 from swinburne_smartrack import Configuration, CiscoDevice, DeviceManager
 
+
 class StudentCollect:
-    def __init__(self, student_id: str, session_dir: pathlib.Path, devices: dict[str, dict[str, str]], log_queue: multiprocessing.Queue, update_queue: multiprocessing.Queue, exam_options: dict[str, list[str]] = None, preset_options: dict[str, str] = None):
+    """
+    Manages exam collection and files in collection directory for a single student
+
+    Maintains a group of DeviceManager instances for each device allocated to the student, also manages setting of exam options and other files to be created
+    in the collection directory including 1) Exam options (options.toml), 2) Exam solution (solution.toml), and 3) ....
+    """
+    def __init__(self, student_id: str, session_dir: pathlib.Path, devices: dict[str, dict[str, str]], log_queue: multiprocessing.Queue, update_queue: multiprocessing.Queue, solution_file: pathlib.Path, exam_options: dict[str, list[str]] = None, preset_options: dict[str, str] = None):
         """
+        Initializes an instance of the StudentCollect class, which manages exam collection for a single student
 
         :param student_id: String containing the student ID to manage collections for.
         :param session_dir: Base directory where all student collections in this session are stored.
         :param devices: Database of device connection and information details to collect.
         :param update_queue: A multiprocessing Queue to return progress updates to the main process.
         :param log_queue: A multiprocessing Queue for passing log messages handled by the logging system.
+        :param solution_file: Path to the file containing the exam solution.
         :param exam_options: Dictionary mapping exam options to allowed values.
         :param preset_options: Dictionary mapping preset options to configured value.
         """
@@ -30,10 +45,12 @@ class StudentCollect:
         self.__student_id = student_id
         self.__base_collect_dir = pathlib.Path(session_dir, student_id)
         self.__devices = devices
+        self.__solution_file = solution_file
         self.__exam_options = exam_options
 
-        self.__options = preset_options if preset_options is not None else {}
+        self.__options = preset_options.copy() if preset_options is not None else {}
 
+        # This dictionary maps exam device names to a DeviceManager instance used to manage the collection
         self.__processes: dict[str, DeviceManager] = {}
         for device, details in devices.items():
             self.__processes[device] = DeviceManager(device=CiscoDevice(f'{details['server']}.ict.swin.edu.au', details['username'], details['password']),
@@ -42,22 +59,20 @@ class StudentCollect:
                                                      full_description=f'{student_id}({device})\t- {details['room']}: {details['fullname']}',
                                                      update_queue=update_queue,
                                                      log_queue=log_queue,
-                                                     usernames=Configuration().manage['usernames'] if 'usernames' in Configuration().manage else None,
-                                                     passwords=Configuration().manage['passwords'] if 'passwords' in Configuration().manage else None
+                                                     usernames = Configuration().manage['usernames'] if 'usernames' in Configuration().manage else [],
+                                                     passwords = Configuration().manage['passwords'] if 'passwords' in Configuration().manage else []
                                                      )
 
-            # Register to actions on newly created process
+            # Register collect and erase actions on newly created process
             self.__processes[device].register_action('collect', out_dir=pathlib.Path(self.__base_collect_dir, device))
             self.__processes[device].register_action('erase')
 
-    def _copy_solution(self, solution: pathlib.Path) -> None:
+    def _copy_solution(self) -> None:
         """
         Copy the provided exam solution configuration file to the student collection directory.
-
-        :param solution: Path of solution configuration file to copy to student collection directory.
         """
-        self.__log.info(f'Copying Solution file "{solution}" to "{self.__base_collect_dir}"')
-        shutil.copyfile(solution, pathlib.Path(self.__base_collect_dir, 'solution.ini'))
+        self.__log.info(f'Copying Solution file "{self.__solution_file}" to "{self.__base_collect_dir}"')
+        shutil.copyfile(self.__solution_file, pathlib.Path(self.__base_collect_dir, 'solution.ini'))
 
     def _save_options(self) -> None:
         """
@@ -79,49 +94,76 @@ class StudentCollect:
             tomli_w.dump(self.__options, file)
 
     def clean_complete_processes(self) -> None:
-        self.__processes = {device: proc.recreate() for device, proc in self.__processes.items() if not proc.finished}
+        """
+        Clean the dictionary of DeviceManager instances to only contain entries for failed collections.
 
-    def ask_options(self) -> None:
+        After DeviceManager processes are run, they cannot be re-executed if collection failed or timed-out. All existing entries in self.__processes
+        are deleted and replaced with copies **IF** the process did not successfully complete.
+        """
+        self.__log.info('Removing successful collections from DeviceManager list')
+        self.__processes = {device: proc.recreate() for device, proc in self.__processes.items() if not proc.process_complete}
+
+    def update_options(self) -> None:
         """
         Ask user via radio list dialog box to set each available exam option value:
          - Options from self.__exam_options
-         - Pre-set option from self.__options not queried
          - User results stored in self.__options
         """
+        self.__log.info(f'Querying exam options for {self.__student_id}')
         for option, possible in self.__exam_options.items():
-            # If option pre-set, continue
-            if option in self.__options: continue
-
+            self.__log.debug(f'{option}: Possible values({possible})')
+            if self.__options.get(option) is not None: self.__log.debug(f'Current value: {option} = {self.__options[option]}')
             while True:
                 code, value = self.__dialog.radiolist(f'Select exam configuration details for "{option}"',
                                                       title=f'Exam options for {self.__student_id}',
                                                       no_cancel=True,
-                                                      choices=[(opt, opt, False) for opt in possible]
+                                                      choices=[(item, item, any([True for k, v in self.__options.items() if k == option and v == item])) for item in possible]
                                                       )
 
                 # Exit loop if valid option is set
                 if code == self.__dialog.OK and value in possible: break;
 
             # Store selected option
+            self.__log.debug(f'New value: {option} = {value}')
             self.__options[option] = value
 
-    def finalise(self, solution: pathlib.Path) -> None:
+    def finalise(self) -> None:
         """
-        :param solution: Path of solution configuration file to copy to student collection directory.
+        Finalise collection information, copies the solution file **AND** saves selected options to the student collection directory
         """
         self.__log.info('Finalising files in student collection directory')
-        self._copy_solution(solution)
+        self._copy_solution()
         self._save_options()
 
     @property
     def devices_to_collect(self) -> list[str]:
+        """
+        Getter for devices to collect.
+        :return: List of device names (as strings) not collected for this student.
+        """
         return [device for device in self.__processes.keys()]
 
     @property
     def processes(self) -> list[DeviceManager]:
+        """
+        Getter for processes to run in MultiDeviceManager. Values (not keys) of self.__processes contains all DeviceManager instances for uncollected devices.
+        :return: List of all DeviceManager instances for this student
+        """
         return [proc for proc in self.__processes.values()]
 
     @property
+    def get_option_count(self) -> int:
+        """
+        Number of exam options set. Allows ordering of student numbers based whether options have been configured or not.
+        :return: Number of exam options set for this student collection.
+        """
+        return len(self.__options)
+
+    @property
     def options(self) -> str:
-        if self.__options is None: return '--- Not set ---'
+        """
+        Representation of student exam options for display purposes.
+        :return: String representation of configured exam options.
+        """
+        if len(self.__options) == 0: return '--- Not set ---'
         return ' '.join([f'{option}({value})' for option, value in self.__options.items()])
