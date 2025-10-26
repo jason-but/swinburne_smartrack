@@ -204,6 +204,7 @@ class SkillsCollect:
                                       title='Collecting Skills Exam',
                                       action='collect',
                                       run_once=False,
+                                      extra_info=f'📂 Collect directory: {self.__base_collect_dir}',
                                       ui_action_items=[DeviceActionCompleteEnum.CONNECTED, DeviceActionCompleteEnum.ENABLE, DeviceActionCompleteEnum.COLLECTED,
                                                        DeviceActionCompleteEnum.ERASED, DeviceActionCompleteEnum.FINISHED]
                                       )

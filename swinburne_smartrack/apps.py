@@ -20,7 +20,7 @@ from swinburne_smartrack.devicemanager import DeviceActionCompleteEnum
 from swinburne_smartrack.skills_collect import SkillsSession, validate_exam_toml, ValidateError
 
 
-# ---------- ArdParse Validators ----------
+# ---------- ArgParse Validators ----------
 class ValidFile:
     """
     Provides a callable object to validate if a given file path exists.
@@ -262,11 +262,11 @@ def smartrack_clean() -> None:
         # Create the MultiDeviceManager instance and execute all processes in loop until complete
         manager = MultiDeviceManager(console, log_queue=log_queue, progress_queue=progress_queue)
         manager.set_process_list(processes)
-        manager.execute_processes(arguments.timeout,
-                                  'Cleaning Devices',
-                                  'clean',
-                                  False,
-                                  [DeviceActionCompleteEnum.CONNECTED, DeviceActionCompleteEnum.ENABLE, DeviceActionCompleteEnum.ERASED, DeviceActionCompleteEnum.FINISHED]
+        manager.execute_processes(timeout=arguments.timeout,
+                                  title='Cleaning Devices',
+                                  action='clean',
+                                  run_once=False,
+                                  ui_action_items=[DeviceActionCompleteEnum.CONNECTED, DeviceActionCompleteEnum.ENABLE, DeviceActionCompleteEnum.ERASED, DeviceActionCompleteEnum.FINISHED]
                                   )
 
     except SmartRackTUI.TerminateApp:
@@ -467,12 +467,15 @@ def skills_collect() -> None:
         console.clear()
         console.print(Panel('Terminating Skills Exam Collection', style='bold red'))
 
-    except KeyboardInterrupt as err:
+    except KeyboardInterrupt:
         # Ignore keyboard interrupt
         pass
 
     except ArgumentTypeError as err:
         console.print(f'[bold red]ERROR: {err}')
+
+    except ValidateError as err:
+        console.print(f'[bold red]Validation Error:', err)
 
     except (Exception,):
         # Use rich to display any other exceptions

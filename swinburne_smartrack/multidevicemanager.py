@@ -175,7 +175,7 @@ class MultiDeviceManager:
         """
         self.__processes = process_list
 
-    def execute_processes(self, timeout: int, title: str, action: str, run_once: bool = True, ui_action_items: list[DeviceActionCompleteEnum] = None) -> None:
+    def execute_processes(self, timeout: int, title: str, action: str, run_once: bool = True, extra_info: str = '', ui_action_items: list[DeviceActionCompleteEnum] = None) -> None:
         """
         Executes multiple processes in parallel, allowing for re-attempts for failed devices.
 
@@ -187,6 +187,7 @@ class MultiDeviceManager:
         :param action: String representation of the action to perform on the devices, also displayed in the console to identify the action being performed.
         :param run_once: Boolean flag indicating whether the function should stop after one execution loop (`True`) or keep running until all tasks are completed
             (`False`). Default is `True`.
+        :param extra_info: If provided, display this extra information message to the console while running processes.
         :param ui_action_items: A list of DeviceActionCompleteEnum values indicating various states or tasks to track during process execution.
             If not specified, all possible DeviceActionCompleteEnum states are used.
         """
@@ -207,6 +208,7 @@ class MultiDeviceManager:
             self.__console.print()
             self.__console.rule(title)
             self.__console.print(f' :computer: Attempting to {action} {len(self.__processes)} devices')
+            if len(extra_info) > 0: self.__console.print(f' {extra_info}')
             self.__console.print(f' :alarm_clock: Timeout = {timeout} seconds')
             self.__console.print()
 
