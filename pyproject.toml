@@ -23,6 +23,7 @@ dependencies = ["logging", "paramiko", "pythondialog", "requests", "rich", "toml
 smartrack_config = "swinburne_smartrack.apps:smartrack_config"
 smartrack_clean = "swinburne_smartrack.apps:smartrack_clean"
 skills_validate_config = "swinburne_smartrack.apps:skills_validate_config"
+skills_collect = "swinburne_smartrack.apps:skills_collect"
 
 [project.urls]
 Homepage = "https://github.com/jason-but/swinburne-smartrack"
