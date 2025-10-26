@@ -15,7 +15,7 @@ from rich.console import Group
 from rich.syntax import Syntax
 from rich.table import Table
 
-from swinburne_smartrack import Configuration, SmartRack, SmartRackTUI, CiscoDevice, DeviceManager, MultiDeviceManager
+from swinburne_smartrack import Configuration, SmartRackTUI, CiscoDevice, DeviceManager, MultiDeviceManager
 from swinburne_smartrack.devicemanager import DeviceActionCompleteEnum
 from swinburne_smartrack.skills_collect import SkillsSession, validate_exam_toml, ValidateError
 
@@ -246,8 +246,8 @@ def smartrack_clean() -> None:
                                    full_description=f'{dev['room']}: {dev['fullname']}',
                                    log_queue=log_queue,
                                    update_queue=progress_queue,
-                                   usernames=Configuration().manage['usernames'] if 'usernames' in Configuration().manage else None,
-                                   passwords=Configuration().manage['passwords'] if 'passwords' in Configuration().manage else None
+                                   usernames=Configuration().manage['usernames'] if 'usernames' in Configuration().manage else [],
+                                   passwords=Configuration().manage['passwords'] if 'passwords' in Configuration().manage else []
                                    )
                      for dev in devices.values() if any(map(dev['device'].startswith, ['Router', 'Switch', 'ASA']))]
 
@@ -283,7 +283,7 @@ def smartrack_clean() -> None:
         for msg in e.args[1]: console.print(f' :computer: {msg}')
         console.print()
 
-    except KeyboardInterrupt as err:
+    except KeyboardInterrupt:
         # Ignore keyboard interrupt
         pass
 
@@ -381,7 +381,7 @@ def skills_validate_config() -> None:
         console.print(device_tree)
         console.print()
 
-    except KeyboardInterrupt as err:
+    except KeyboardInterrupt:
         # Ignore keyboard interrupt
         pass
 

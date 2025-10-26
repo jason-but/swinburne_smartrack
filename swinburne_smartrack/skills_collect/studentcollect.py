@@ -59,8 +59,8 @@ class StudentCollect:
                                                      full_description=f'{student_id}({device})\t- {details['room']}: {details['fullname']}',
                                                      update_queue=update_queue,
                                                      log_queue=log_queue,
-                                                     usernames = Configuration().manage['usernames'] if 'usernames' in Configuration().manage else [],
-                                                     passwords = Configuration().manage['passwords'] if 'passwords' in Configuration().manage else []
+                                                     usernames=Configuration().manage['usernames'] if 'usernames' in Configuration().manage else [],
+                                                     passwords=Configuration().manage['passwords'] if 'passwords' in Configuration().manage else []
                                                      )
 
             # Register collect and erase actions on newly created process
@@ -121,7 +121,7 @@ class StudentCollect:
                                                       )
 
                 # Exit loop if valid option is set
-                if code == self.__dialog.OK and value in possible: break;
+                if code == self.__dialog.OK and value in possible: break
 
             # Store selected option
             self.__log.debug(f'New value: {option} = {value}')

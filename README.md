@@ -75,6 +75,11 @@ Execute:
 ```code
 python -m swinburne_smartrack -h
 ```
+
+Compiling library
+```code
+python -m build
+```
 ## Programs
 
 Not developed yet...

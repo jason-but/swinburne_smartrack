@@ -31,7 +31,7 @@ class SkillsSession:
         self.__exam_details = exam_config['details']
         self.__exam_collect_timeout = exam_config['collect']['timeout']
         self.__expected_devices = [name for name in exam_config['collect'] if name != 'timeout']
-        self.__exam_options = exam_config['options']
+        self.__exam_options = exam_config.get('options', {})
         self.__solution_file = pathlib.Path(solution_file)
         self.__preset_options = preset_options
 
@@ -72,7 +72,7 @@ class SkillsSession:
         while len(self.__devices) == 0 or len(self.__missing_devices) > 0:
             self.__log.info(f'Access SmartRack and download details for all booked devices')
             tui = SmartRackTUI(self.__console)
-            smartrack = tui.ui('Please select which rooms with booked devices you would like to clean.')
+            smartrack = tui.ui('Please select which rooms this exam will be running in.')
             self._validate_downloaded_devices(smartrack.filter_nickname(self.__expected_devices))
 
             if len(self.__missing_devices) > 0:

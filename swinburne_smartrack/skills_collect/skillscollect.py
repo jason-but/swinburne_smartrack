@@ -224,7 +224,7 @@ class SkillsCollect:
         # Get list of all students with fully collected configurations
         successful_students = [student_id for student_id in students_to_collect if len(self.__student_collect[student_id].devices_to_collect) == 0]
 
-        if self.__num_students > 0:
+        if self.__num_options > 0:
             self.__log.info(f'Exam has configurable options - querying for options for students ({', '.join(successful_students)})')
             self._set_options(successful_students)
 
