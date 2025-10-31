@@ -44,6 +44,13 @@ def validate_exam_toml(file: pathlib.Path) -> dict:
                 if name != 'timeout':
                     assert 'type' in details, f'EXAM TOML Configuration device {name} does not specify a device type'
                     assert details['type'] in Configuration().manage, f'EXAM TOML Configuration device {name} type ({details["type"]}) is not a valid device type'
+                    for key, commands in details.items():
+                        if key != 'type':
+                            print(key, commands)
+                            assert key == 'extra', f'EXAM TOML Configuration for device ({name}) contains an invalid key ({key})'
+                            assert isinstance(commands, list), f'Extra Commands configuration for ({name}) is not a list of commands (hint: extra = ["{commands}"])'
+                            assert all(isinstance(command, str) for command in commands), f'Extra Commands configuration for ({name}) is not a list of strings (extra = {commands})'
+                            assert len(commands) > 0, f'Extra Commands configuration for ({name}) is an empty list (extra = {commands})'
 
             if 'options' in result:
                 assert (len(result['options'])) > 0, f'EXAM TOML Configuration [options] section does not contain any options'
