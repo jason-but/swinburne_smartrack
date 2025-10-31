@@ -26,6 +26,7 @@ class DeviceActionCompleteEnum(Enum):
     :ivar CONNECTED: Indicates that the device connection process has completed.
     :ivar ENABLE: Indicates that the device has been successfully entered into enable mode, and is ready to accept commands.
     :ivar COLLECTED: Indicates that the data collection from the device is complete.
+    :ivar EXTRACOLLECTED: Indicates that the collections of extra commands is complete.
     :ivar ERASED: Indicates that the data erasure process on the device has concluded.
     :ivar RESTARTED: Indicates that the device has been successfully restarted.
     :ivar FINISHED: Indicates that all actions on the device have concluded.
@@ -33,6 +34,7 @@ class DeviceActionCompleteEnum(Enum):
     CONNECTED = 'Connected devices'
     ENABLE = 'Devices in "enable" mode'
     COLLECTED = 'Completed data collections'
+    EXTRACOLLECTED = 'Completed collecting extra commands'
     ERASED = 'Device with deleted configurations'
     RESTARTED = 'Restarted devices'
     FINISHED = 'Devices with all actions complete'
@@ -138,6 +140,7 @@ class DeviceManager(multiprocessing.Process):
 
         Currently allowed actions are:
          - register_action('collect', out_dir='/file/storage/directory')
+         - register_action('extra_collect', command_list=['command 1', 'command 2', ...]
          - register_action('erase')
          - register_action('restart')
 
@@ -168,6 +171,28 @@ class DeviceManager(multiprocessing.Process):
                 file.write(self.__device.capture_command(command, strip_excess_bangs=command in ['show run', 'sh run', 'sho run']))
 
         self.__update_queue.put({'task': DeviceActionCompleteEnum.COLLECTED, 'message': f'Collected configurations for {self.description}'})
+
+    def extra_collect(self, out_dir: str = '.', command_list: list[str] = []) -> None:
+        """
+        Collects extra configurations from the device by executing commands provided in the command_list and saving the output into specified files within the given output directory.
+
+        NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
+
+        :param out_dir: The directory where configuration command outputs will be saved. If the directory does not exist, it will be created. Defaults to the current directory.
+        :param command_list: List of extra commands to capture the output of.
+        """
+        self.__log.info(f'({self.description}) Collecting extra configurations')
+
+        self.__log.debug(f'({self.description}) Creating output directory {out_dir}')
+        os.makedirs(out_dir, exist_ok=True)
+
+        for command in command_list:
+            self.__log.info(f'({self.description}) Collecting output of command "{command}"')
+            filename = command.replace(' ', '_').replace('/', '_').replace('|', '-')
+            with open(os.path.join(out_dir, filename), 'w') as file:
+                file.write(self.__device.capture_command(command, strip_excess_bangs=command in ['show run', 'sh run', 'sho run']))
+
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.EXTRACOLLECTED, 'message': f'Collected extra configurations for {self.description}'})
 
     def erase(self) -> None:
         """
