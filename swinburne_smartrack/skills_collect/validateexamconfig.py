@@ -46,7 +46,6 @@ def validate_exam_toml(file: pathlib.Path) -> dict:
                     assert details['type'] in Configuration().manage, f'EXAM TOML Configuration device {name} type ({details["type"]}) is not a valid device type'
                     for key, commands in details.items():
                         if key != 'type':
-                            print(key, commands)
                             assert key == 'extra', f'EXAM TOML Configuration for device ({name}) contains an invalid key ({key})'
                             assert isinstance(commands, list), f'Extra Commands configuration for ({name}) is not a list of commands (hint: extra = ["{commands}"])'
                             assert all(isinstance(command, str) for command in commands), f'Extra Commands configuration for ({name}) is not a list of strings (extra = {commands})'
