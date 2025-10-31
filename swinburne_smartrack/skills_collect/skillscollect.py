@@ -27,13 +27,14 @@ class SkillsCollect:
         """
         pass
 
-    def __init__(self, device_db: dict[str, dict[str, dict[str, str]]], exam_details: dict[str, str], solution_file: pathlib.Path, exam_options: dict[str, list[str]] = None, preset_options: dict[str, str] = None):
+    def __init__(self, device_db: dict[str, dict[str, dict[str, str]]], exam_details: dict[str, str], extra_commands: dict[str, list[str]], solution_file: pathlib.Path, exam_options: dict[str, list[str]] = None, preset_options: dict[str, str] = None):
         """
         Initializes an instance of the SkillsCollect class, which manages collection for an entire exam session.
 
         :param device_db: Dictionary of device information for exam. Key is student_id mapping to a dictionary. This dictionary maps the exam device name to
                           a dictionary that is passed to DeviceManager to manage the device.
         :param exam_details: Exam parameters extracted from the exam configuration file. Contains information to construct directory to collect exam to.
+        :param extra_commands: Dictionary mapping exam device name to a list of strings containing additional commands to execute/collect for that device..
         :param solution_file: Path to the file containing the exam solution.
         :param exam_options: Per-student configurable options for the exam.
         :param preset_options: Exam options configured at the command line to automatically set for all students.
@@ -69,6 +70,12 @@ class SkillsCollect:
         # This queue holds status updates from the worker threads
         self.__progress_queue = multiprocessing.Queue()  # Queue used for reporting progress
 
+        # self.__ui_action_items lists all actions we need to complete. Insert EXTRACOLLECTED after COLLECTED if at least one device has extra commands to collect
+        self.__ui_action_items = [DeviceActionCompleteEnum.CONNECTED, DeviceActionCompleteEnum.ENABLE, DeviceActionCompleteEnum.COLLECTED,
+                                  DeviceActionCompleteEnum.ERASED, DeviceActionCompleteEnum.FINISHED]
+        if sum(len(commands) for commands in extra_commands.values()) > 0:
+            self.__ui_action_items.insert(3, DeviceActionCompleteEnum.EXTRACOLLECTED)
+
         # self.__student_collect is a dictionary mapping one student ID to a StudentCollect object
         self.__student_collect: dict[str, StudentCollect] = {}
 
@@ -80,6 +87,7 @@ class SkillsCollect:
                                                                 log_queue=self.__log_queue,
                                                                 update_queue=self.__progress_queue,
                                                                 solution_file=solution_file,
+                                                                extra_commands=extra_commands,
                                                                 exam_options=exam_options,
                                                                 preset_options=preset_options
                                                                 )
@@ -205,8 +213,7 @@ class SkillsCollect:
                                       action='collect',
                                       run_once=False,
                                       extra_info=f'📂 Collect directory: {self.__base_collect_dir}',
-                                      ui_action_items=[DeviceActionCompleteEnum.CONNECTED, DeviceActionCompleteEnum.ENABLE, DeviceActionCompleteEnum.COLLECTED,
-                                                       DeviceActionCompleteEnum.ERASED, DeviceActionCompleteEnum.FINISHED]
+                                      ui_action_items=self.__ui_action_items
                                       )
         except MultiDeviceManager.TerminateManager as e:
             # User terminated collection after some processes failed
