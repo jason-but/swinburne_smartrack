@@ -31,6 +31,7 @@ class SkillsSession:
         self.__exam_details = exam_config['details']
         self.__exam_collect_timeout = exam_config['collect']['timeout']
         self.__expected_devices = [name for name in exam_config['collect'] if name != 'timeout']
+        self.__exam_extra_commands = {name: exam_config['collect'][name].get('extra', []) for name in self.__expected_devices}
         self.__exam_options = exam_config.get('options', {})
         self.__solution_file = pathlib.Path(solution_file)
         self.__preset_options = preset_options
@@ -95,8 +96,8 @@ class SkillsSession:
         self.__log.info('Running Exam Collection')
         self._retrieve_devices()
 
-        exam_session = SkillsCollect(device_db=self.__devices, exam_details=self.__exam_details, solution_file=self.__solution_file,
-                                     exam_options=self.__exam_options, preset_options=self.__preset_options)
+        exam_session = SkillsCollect(device_db=self.__devices, exam_details=self.__exam_details, extra_commands=self.__exam_extra_commands,
+                                     solution_file=self.__solution_file, exam_options=self.__exam_options, preset_options=self.__preset_options)
 
         # Configure the logger
         logging.basicConfig(format='%(name)s.%(funcName)s() - %(message)s',

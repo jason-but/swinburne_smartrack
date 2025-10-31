@@ -34,6 +34,7 @@ class StudentCollect:
         :param update_queue: A multiprocessing Queue to return progress updates to the main process.
         :param log_queue: A multiprocessing Queue for passing log messages handled by the logging system.
         :param solution_file: Path to the file containing the exam solution.
+        :param extra_commands: Dictionary mapping exam device name to a list of strings containing additional commands to execute/collect for that device..
         :param exam_options: Dictionary mapping exam options to allowed values.
         :param preset_options: Dictionary mapping preset options to configured value.
         """
