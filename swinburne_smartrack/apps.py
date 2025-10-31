@@ -376,7 +376,10 @@ def skills_validate_config() -> None:
         device_tree = Tree('⚙️ [bold yellow]Devices to collect')
         for device_name, parameters in exam_config['collect'].items():
             if device_name == 'timeout': continue
-            device_tree.add(f'🔀 [bold blue]{device_name}[/] (type=[bold green]{parameters["type"]}[/])')
+            device_node = device_tree.add(f'🔀 [bold blue]{device_name}[/] (type=[bold green]{parameters["type"]}[/])')
+            if 'extra' in parameters:
+                device_node.add(
+                    Group('🔤 [bold blue]Extra commands to collect', Syntax('\n'.join(parameters['extra']), 'null', theme='monokai', line_numbers=True)))
 
         console.print(device_tree)
         console.print()
