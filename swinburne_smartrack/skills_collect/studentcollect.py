@@ -24,7 +24,7 @@ class StudentCollect:
     Maintains a group of DeviceManager instances for each device allocated to the student, also manages setting of exam options and other files to be created
     in the collection directory including 1) Exam options (options.toml), 2) Exam solution (solution.toml), and 3) ....
     """
-    def __init__(self, student_id: str, session_dir: pathlib.Path, devices: dict[str, dict[str, str]], log_queue: multiprocessing.Queue, update_queue: multiprocessing.Queue, solution_file: pathlib.Path, exam_options: dict[str, list[str]] = None, preset_options: dict[str, str] = None):
+    def __init__(self, student_id: str, session_dir: pathlib.Path, devices: dict[str, dict[str, str]], log_queue: multiprocessing.Queue, update_queue: multiprocessing.Queue, solution_file: pathlib.Path, extra_commands: dict[str, list[str]], exam_options: dict[str, list[str]] = None, preset_options: dict[str, str] = None):
         """
         Initializes an instance of the StudentCollect class, which manages exam collection for a single student
 
@@ -63,8 +63,10 @@ class StudentCollect:
                                                      passwords=Configuration().manage['passwords'] if 'passwords' in Configuration().manage else []
                                                      )
 
-            # Register collect and erase actions on newly created process
+            # Register collect, extra_collect(if there are extra commands to collect) and erase actions on newly created process
             self.__processes[device].register_action('collect', out_dir=pathlib.Path(self.__base_collect_dir, device))
+            if len(extra_commands[device]) > 0:
+                self.__processes[device].register_action('extra_collect', out_dir=pathlib.Path(self.__base_collect_dir, device), command_list=extra_commands[device])
             self.__processes[device].register_action('erase')
 
     def _copy_solution(self) -> None:
