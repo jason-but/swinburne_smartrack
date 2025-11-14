@@ -25,7 +25,7 @@ class StudentCollect:
     Maintains a group of DeviceManager instances for each device allocated to the student, also manages setting of exam options and other files to be created
     in the collection directory including 1) Exam options (options.toml), 2) Exam solution (solution.toml), and 3) ....
     """
-    def __init__(self, student_id: str, session_dir: pathlib.Path, devices: dict[str, dict[str, str]], log_queue: multiprocessing.Queue, update_queue: multiprocessing.Queue, solution_file: pathlib.Path, extra_commands: dict[str, list[str]], exam_options: dict[str, list[str]] = None, preset_options: dict[str, str] = None):
+    def __init__(self, student_id: str, session_dir: pathlib.Path, devices: dict[str, dict[str, str]], log_queue: multiprocessing.Queue, update_queue: multiprocessing.Queue, solution_file: pathlib.Path, extra_commands: dict[str, list[str]], exam_details: dict[str, str], exam_options: dict[str, list[str]] = None, preset_options: dict[str, str] = None):
         """
         Initializes an instance of the StudentCollect class, which manages exam collection for a single student
 
@@ -35,7 +35,8 @@ class StudentCollect:
         :param update_queue: A multiprocessing Queue to return progress updates to the main process.
         :param log_queue: A multiprocessing Queue for passing log messages handled by the logging system.
         :param solution_file: Path to the file containing the exam solution.
-        :param extra_commands: Dictionary mapping exam device name to a list of strings containing additional commands to execute/collect for that device..
+        :param extra_commands: Dictionary mapping exam device name to a list of strings containing additional commands to execute/collect for that device.
+        :param exam_details: Exam parameters extracted from the exam configuration file. Contains information to construct directory to collect exam to.
         :param exam_options: Dictionary mapping exam options to allowed values.
         :param preset_options: Dictionary mapping preset options to configured value.
         """
@@ -49,6 +50,9 @@ class StudentCollect:
         self.__devices = devices
         self.__solution_file = solution_file
         self.__exam_options = exam_options
+
+        # Store exam name for later saving in exam information file
+        self.__exam_information = {'Information': {'name': exam_details['name']}}
 
         self.__options = preset_options.copy() if preset_options is not None else {}
 
@@ -93,7 +97,7 @@ class StudentCollect:
         with open(pathlib.Path(self.__base_collect_dir, 'options.ini'), 'w') as file:
             config.write(file)
 
-        exam_information = {'Information': {'name': 'TNE20002 Final'}, 'Options': self.__options}
+        self.__exam_information['Options'] = self.__options
 
         # parameters parser will extract a list of comma separated groups where each group is a colon separated list
         # a:1:2:3, b:hello:world, c:test will map to
@@ -103,7 +107,7 @@ class StudentCollect:
 
         with open(self.__solution_file, 'r') as file:
             configs = [rubric_parser.parse_string(line).as_dict() for line in file if line.startswith('rubric[')]
-            exam_information['Rubrics'] = {rubric['rubric']: {param[0]: param[1:] for param in rubric['config']} for rubric in configs}
+            self.__exam_information['Rubrics'] = {rubric['rubric']: {param[0]: param[1:] for param in rubric['config']} for rubric in configs}
 
         self.__log.info('Creating TOML file')
         with open(pathlib.Path(self.__base_collect_dir, Configuration().skills['information_file']), 'wb') as file:

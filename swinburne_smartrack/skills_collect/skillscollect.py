@@ -88,6 +88,7 @@ class SkillsCollect:
                                                                 update_queue=self.__progress_queue,
                                                                 solution_file=solution_file,
                                                                 extra_commands=extra_commands,
+                                                                exam_details=exam_details,
                                                                 exam_options=exam_options,
                                                                 preset_options=preset_options
                                                                 )
