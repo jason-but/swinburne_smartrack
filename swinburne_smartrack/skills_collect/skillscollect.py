@@ -51,7 +51,7 @@ class SkillsCollect:
         self.__session_name = self._get_session_name(f'{rooms[0] if len(rooms) == 1 else ''}{os.getlogin()}_{datetime.datetime.now().strftime("%a_%H00")}')
 
         # Define base collection directory for the session
-        self.__base_collect_dir = pathlib.Path('test_collect',
+        self.__base_collect_dir = pathlib.Path(Configuration().skills['base_dir'],
                                                exam_details['unitcode'],
                                                f'{datetime.datetime.now().year}_{Configuration().skills['semester_map'][datetime.datetime.now().month - 1]}',
                                                exam_details['shortname'],
