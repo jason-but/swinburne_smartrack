@@ -22,12 +22,15 @@ url = "https://ictencsvr11.ict.swin.edu.au/agent/get_all.php"
 ################################################################################
 ## Properties to manage a SmartRack device
 ##
+## usernames     - List of usernames to cycle through when attempting to put device in enable mode (optional)
+## passwords     - List of passwords to cycle through when attempting to put device in enable mode (optional)
 ## manage.DEVICE - Device type (router, switch, asa)
 ## collect       - List of commands to capture output for when collecting student work for this device
 ## erase         - List of commands to send to device to clean all stored configuration
 ## restart       - List of commands to send to device to reload the device
 ################################################################################
 [manage]
+usernames = [ "user1", "user2" ]
 passwords = [ "pass1", "pass2" ]
 
 # Commands to collect/erase-config/restart a router
@@ -49,9 +52,18 @@ erase = [ "write erase", "", "" ]
 restart = [ "reload", "", "", "no", "", "" ]
 
 ################################################################################
+## Configuration options to manage exam collection
+##
+## base_dir          - Base directory for collecting exams, files will be stored in sub-directories under here
+## semester_map      - Session directory path includes year and semester. This list maps month numbers to semester names
+## information_file  - Filename created by skills_collect for each student containing exam information, selected student options, and marking rubric information
+## requirements_file - Filename created in collection directory with the exam requirements/solution (copied from file provided to skills_collect
 ################################################################################
 [skills]
+base_dir = "/home/swin/shared/g_cisco"
 semester_map = [ "Sum", "Sum", "Sum", "S1", "S1", "S1", "S1", "S1", "S2", "S2", "S2", "S2" ]
+information_file = "exam_info.toml"
+requirements_file = "solution.ini"
 
 ################################################################################
 ## Code Debugging, set log level for each module below to override default app debug level, valid levels are DEBUG, INFO, WARNING, ERROR
