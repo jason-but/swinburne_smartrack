@@ -149,14 +149,23 @@ def smartrack_config() -> None:
         # Display Skills Exam information
         console.rule('Skills Collection Configuration')
 
-        # Display Semester Mapping Calendar
-        if 'base_dir' in Configuration().skills:
-            directory_tree = Tree(':open_file_folder: Base directory for exam collection')
-            directory_tree.add(Configuration().skills['base_dir'])
-            console.print(directory_tree)
-        else:
-            console.print(Panel('ERROR: No \'base_dir\' value configured in [skills] section of system configuration', style='bold red'))
+        # Display Collection Directories
+        directory_table = Table('Option Name', 'Possible Values', title='📂 Collected file locations', title_style='bold yellow',
+                                title_justify="left", show_lines=False, box=box.HORIZONTALS)
 
+        directory_table.add_row('[bold green] 📂 Base directory for exam collection:',
+                                Configuration().skills.get('base_dir', '❗ [bold red]ERROR: No \'base_dir\' value configured in \[skills] section of system configuration'))
+
+        directory_table.add_row('[bold green] 👨‍🎓 Student collection sub-folder:',
+                                '<unit_name>/<year_sem>/<shortname>/<session_name>/<student_id>')
+
+        directory_table.add_row('[bold green] 💡 File containing exam solution/requirements:',
+                                Configuration().skills.get('requirements_file', '❗ [bold red]ERROR: No \'requirements_file\' value configured in \[skills] section of system configuration'))
+
+        directory_table.add_row('[bold green] 📝 File containing exam details:',
+                                Configuration().skills.get('information_file', '❗ [bold red]ERROR: No \'information_file\' value configured in \[skills] section of system configuration'))
+
+        console.print(directory_table)
         console.print()
 
         # Display Semester Mapping Calendar
