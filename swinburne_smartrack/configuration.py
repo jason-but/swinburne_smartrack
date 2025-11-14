@@ -59,8 +59,8 @@ class Configuration:
 
         self.config = {}
 
-        # Set list of files to try to load as configuration
-        config_files = [pathlib.Path(filename)] if filename else [pathlib.Path(p, 'smartrack.toml') for p in [pathlib.Path.cwd(), pathlib.Path(os.environ['HOME'], '.config', 'cisco')]]
+        # Set list of files to try to load as configuration (either provided or first ~/.config/cisco/smartrack.toml and backup /etc/cisco/smartrack.toml
+        config_files = [pathlib.Path(filename)] if filename else [pathlib.Path(p, 'smartrack.toml') for p in [pathlib.Path(os.environ['HOME'], '.config', 'cisco'), pathlib.Path('/etc', 'cisco'), ]]
 
         # Try loading each file in turn, terminate constructor on first successful load
         for file in config_files:

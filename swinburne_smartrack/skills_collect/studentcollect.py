@@ -11,6 +11,7 @@ import re
 import shutil
 import configparser
 import tomli_w
+import pyparsing
 import dialog
 
 # Import SmartRackLibrary modules
@@ -75,7 +76,7 @@ class StudentCollect:
         Copy the provided exam solution configuration file to the student collection directory.
         """
         self.__log.info(f'Copying Solution file "{self.__solution_file}" to "{self.__base_collect_dir}"')
-        shutil.copyfile(self.__solution_file, pathlib.Path(self.__base_collect_dir, 'solution.ini'))
+        shutil.copyfile(self.__solution_file, pathlib.Path(self.__base_collect_dir, Configuration().skills['requirements_file']))
 
     def _save_options(self) -> None:
         """
@@ -92,9 +93,21 @@ class StudentCollect:
         with open(pathlib.Path(self.__base_collect_dir, 'options.ini'), 'w') as file:
             config.write(file)
 
+        exam_information = {'Information': {'name': 'TNE20002 Final'}, 'Options': self.__options}
+
+        # parameters parser will extract a list of comma separated groups where each group is a colon separated list
+        # a:1:2:3, b:hello:world, c:test will map to
+        # [['a', '1', '2', '3'], ['b', 'hello', 'world'], ['c', 'test']]
+        parameters_parser = pyparsing.DelimitedList(pyparsing.Group(pyparsing.DelimitedList(pyparsing.Word(pyparsing.alphanums + '_'), delim=':')))
+        rubric_parser = pyparsing.Word(pyparsing.alphanums + '_') + '[' + pyparsing.Word(pyparsing.alphanums + '_')('rubric') + pyparsing.Word('[] =') + parameters_parser()('config')
+
+        with open(self.__solution_file, 'r') as file:
+            configs = [rubric_parser.parse_string(line).as_dict() for line in file if line.startswith('rubric[')]
+            exam_information['Rubrics'] = {rubric['rubric']: {param[0]: param[1:] for param in rubric['config']} for rubric in configs}
+
         self.__log.info('Creating TOML file')
-        with open(pathlib.Path(self.__base_collect_dir, 'options.toml'), 'wb') as file:
-            tomli_w.dump(self.__options, file)
+        with open(pathlib.Path(self.__base_collect_dir, Configuration().skills['information_file']), 'wb') as file:
+            tomli_w.dump(exam_information, file)
 
     def clean_complete_processes(self) -> None:
         """
