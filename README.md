@@ -30,15 +30,15 @@ default location. All library code will look first in `~/.config/cisco/smartrack
 
 [smartrack_servers.ATC328]
 description = "Cisco Devices in ATC328"
-url = "https://ictencsvr2.ict.swin.edu.au/agent/get_all.php"
+url = "https://<url>"
 
 [smartrack_servers.ATC329]
 description = "Cisco Devices in ATC329"
-url = "https://ictencsvr6.ict.swin.edu.au/agent/get_all.php"
+url = "https://<url>"
 
 [smartrack_servers.ATC330]
 description = "Cisco Devices in ATC330"
-url = "https://ictencsvr11.ict.swin.edu.au/agent/get_all.php"
+url = "https://<url>"
 
 ################################################################################
 ## Properties to manage a SmartRack device
