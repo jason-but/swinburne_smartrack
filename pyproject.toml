@@ -17,7 +17,7 @@ classifiers = [
 ]
 license = "MIT"
 license-files = ["LICEN[CS]E*"]
-dependencies = ["logging", "paramiko", "pyparsing", "pythondialog", "requests", "rich", "tomli_w"]
+dependencies = ["logging", "paramiko", "pyparsing", "pythondialog", "requests", "rich", "tomli_w", "tomlkit"]
 
 [project.scripts]
 smartrack_config = "swinburne_smartrack.apps:smartrack_config"

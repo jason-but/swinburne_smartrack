@@ -4,7 +4,8 @@ import pathlib
 import multiprocessing
 import dialog
 import datetime
-import os
+import getpass
+
 import rich
 from rich.panel import Panel
 
@@ -48,7 +49,7 @@ class SkillsCollect:
 
         # Set the session name, create default and then ask user. If exam in one room then <room>_<username>_<day>_<time> otherwise <username>_<day>_<time>
         rooms = list(set([f'{details['room']}_' for devs in device_db.values() for details in devs.values()]))
-        self.__session_name = self._get_session_name(f'{rooms[0] if len(rooms) == 1 else ''}{os.getlogin()}_{datetime.datetime.now().strftime("%a_%H00")}')
+        self.__session_name = self._get_session_name(f'{rooms[0] if len(rooms) == 1 else ''}{getpass.getuser().split('@', 1)[0]}_{datetime.datetime.now().strftime("%a_%H00")}')
 
         # Define base collection directory for the session
         self.__base_collect_dir = pathlib.Path(Configuration().skills['base_dir'],

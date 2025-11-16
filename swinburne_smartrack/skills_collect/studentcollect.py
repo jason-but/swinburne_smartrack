@@ -10,7 +10,7 @@ import multiprocessing
 import re
 import shutil
 import configparser
-import tomli_w
+import tomlkit
 import pyparsing
 import dialog
 
@@ -53,6 +53,27 @@ class StudentCollect:
 
         # Store exam name for later saving in exam information file
         self.__exam_information = {'Information': {'name': exam_details['name']}}
+
+        # Extract rubric information from the solution file and add to self.__exam_information
+        # pyparser class to handle an integer and convert to int type
+        int_parser = pyparsing.Word(pyparsing.nums)
+        int_parser.setParseAction(lambda x: int(x[0]))
+
+        # pyparser class to handle a label
+        label_parser = pyparsing.Word(pyparsing.alphanums + '_')
+
+        # pyparser to handle a comma separated list of colon separated lists
+        # - Each colon separated list begins with a label, followed by a list of integers
+        parameters_parser = pyparsing.DelimitedList(pyparsing.Group(pyparsing.DelimitedList(int_parser | label_parser, delim=':')))
+
+        # pyparser to handle a line formatted as "label[label] = parameters"
+        # - label within [] stored in "rubric" field, parameters stored in "config" field
+        rubric_parser = label_parser + '[' + label_parser('rubric') + pyparsing.Word('[] =') + parameters_parser()('config')
+
+        # Find all lines beginning with "rubric[" in the solution file, extract rubric configuration, and add to self.__exam_information
+        with open(self.__solution_file, 'r') as file:
+            configs = [rubric_parser.parse_string(line).as_dict() for line in file if line.startswith('rubric[')]
+            self.__exam_information['Rubrics'] = {rubric['rubric']: {param[0]: param[1] if len(param) == 1 else param[1:] for param in rubric['config']} for rubric in configs}
 
         self.__options = preset_options.copy() if preset_options is not None else {}
 
@@ -97,21 +118,12 @@ class StudentCollect:
         with open(pathlib.Path(self.__base_collect_dir, 'options.ini'), 'w') as file:
             config.write(file)
 
+        # Append options to existing exam_information for saving
         self.__exam_information['Options'] = self.__options
-
-        # parameters parser will extract a list of comma separated groups where each group is a colon separated list
-        # a:1:2:3, b:hello:world, c:test will map to
-        # [['a', '1', '2', '3'], ['b', 'hello', 'world'], ['c', 'test']]
-        parameters_parser = pyparsing.DelimitedList(pyparsing.Group(pyparsing.DelimitedList(pyparsing.Word(pyparsing.alphanums + '_'), delim=':')))
-        rubric_parser = pyparsing.Word(pyparsing.alphanums + '_') + '[' + pyparsing.Word(pyparsing.alphanums + '_')('rubric') + pyparsing.Word('[] =') + parameters_parser()('config')
-
-        with open(self.__solution_file, 'r') as file:
-            configs = [rubric_parser.parse_string(line).as_dict() for line in file if line.startswith('rubric[')]
-            self.__exam_information['Rubrics'] = {rubric['rubric']: {param[0]: param[1:] for param in rubric['config']} for rubric in configs}
 
         self.__log.info('Creating TOML file')
         with open(pathlib.Path(self.__base_collect_dir, Configuration().skills['information_file']), 'wb') as file:
-            tomli_w.dump(exam_information, file)
+            tomlkit.dump(self.__exam_information, file)
 
     def clean_complete_processes(self) -> None:
         """
