@@ -118,7 +118,9 @@ class MultiDeviceManager:
         self.__start_time = time.time()
 
         self.__log.info(f'Starting {len(self.__processes)} processes')
-        for process in self.__processes: process.start()
+        for process in self.__processes:
+            process.start()
+            time.sleep(0.1)
 
         with (rich.live.Live(rich.console.Group(console_progress, console_status), console=self.__console)):
             # Loop until the timeout has expired

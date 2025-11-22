@@ -73,7 +73,7 @@ class StudentCollect:
         # Find all lines beginning with "rubric[" in the solution file, extract rubric configuration, and add to self.__exam_information
         with open(self.__solution_file, 'r') as file:
             configs = [rubric_parser.parse_string(line).as_dict() for line in file if line.startswith('rubric[')]
-            self.__exam_information['Rubrics'] = {rubric['rubric']: {param[0]: param[1] if len(param) == 1 else param[1:] for param in rubric['config']} for rubric in configs}
+            self.__exam_information['Rubrics'] = {rubric['rubric']: {param[0]: param[1] if len(param) == 2 else param[1:] for param in rubric['config']} for rubric in configs}
 
         self.__options = preset_options.copy() if preset_options is not None else {}
 
@@ -122,7 +122,7 @@ class StudentCollect:
         self.__exam_information['Options'] = self.__options
 
         self.__log.info('Creating TOML file')
-        with open(pathlib.Path(self.__base_collect_dir, Configuration().skills['information_file']), 'wb') as file:
+        with open(pathlib.Path(self.__base_collect_dir, Configuration().skills['information_file']), 'w') as file:
             tomlkit.dump(self.__exam_information, file)
 
     def clean_complete_processes(self) -> None:
