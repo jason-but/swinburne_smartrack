@@ -6,15 +6,18 @@ This module implements the DeviceManager class which is used to manage control o
 import os
 import logging
 import logging.handlers
+import re
+import pyparsing
 import multiprocessing
 from typing import Any
 from enum import Enum
+from ctypes import c_char
 
 # Import SmartRackLibrary modules
 from .configuration import Configuration
 from .ciscodevice import CiscoDevice
 
-# TODO: Enable capturing of "extra commands"
+BACKUP_BUFFER_SIZE = 16384
 # TODO: Add backup() and restore() actions
 
 
@@ -27,16 +30,20 @@ class DeviceActionCompleteEnum(Enum):
     :ivar ENABLE: Indicates that the device has been successfully entered into enable mode, and is ready to accept commands.
     :ivar COLLECTED: Indicates that the data collection from the device is complete.
     :ivar EXTRACOLLECTED: Indicates that the collections of extra commands is complete.
-    :ivar ERASED: Indicates that the data erasure process on the device has concluded.
+    :ivar BACKUP: Indicates that backing up the configuration for the device is complete.
+    :ivar RESTORE: Indicates that restoring a configuration to the device is complete.
     :ivar RESTARTED: Indicates that the device has been successfully restarted.
+    :ivar ERASED: Indicates that the data erasure process on the device has concluded.
     :ivar FINISHED: Indicates that all actions on the device have concluded.
     """
     CONNECTED = 'Connected devices'
     ENABLE = 'Devices in "enable" mode'
     COLLECTED = 'Completed data collections'
     EXTRACOLLECTED = 'Completed collecting extra commands'
-    ERASED = 'Device with deleted configurations'
+    BACKUP = 'Devices backed-up'
+    RESTORE = 'Devices with restored configurations'
     RESTARTED = 'Restarted devices'
+    ERASED = 'Device with deleted configurations'
     FINISHED = 'Devices with all actions complete'
 
 
@@ -89,6 +96,9 @@ class DeviceManager(multiprocessing.Process):
         # Create shared variable so parent process can know of successful completion
         self.__complete = multiprocessing.Value('b', False)
 
+        # Create shared variable to store backed-up configuration so parent process can access (initialised with zeroes)
+        self.__config = multiprocessing.Array(c_char, BACKUP_BUFFER_SIZE, lock=True)
+
         # Establish logger for DeviceManager class - has to be done last as otherwise calling Configure() will delete the queue log handler
         self.__log = logging.getLogger('DeviceManager')
         self.__log.addHandler(logging.handlers.QueueHandler(log_queue))
@@ -119,6 +129,64 @@ class DeviceManager(multiprocessing.Process):
         self.__device.connect()
         self.__log.info(f'({self.description}) Setting device to enable mode')
         self.__device.set_enable_mode([], [])
+
+    @staticmethod
+    def _sh_vlan_brief_to_commands(sh_vlan_brief: str) -> str:
+        """
+        VLAN creation and names are not stored in the output of "show run" on a Cisco Switch. We need to extract the VLAN information from the output of
+        "show vlan brief" and convert it into a series of commands that will create the required programming commands.
+
+        :param sh_vlan_brief: Captured "show vlan brief" output as a string
+        :return: String containing the modified configuration that can be re-uploaded.
+        """
+        # pyparser class to handle an integer and convert to an int type
+        int_parser = pyparsing.Word(pyparsing.nums)
+        int_parser.setParseAction(lambda x: int(x[0]))
+
+        # pyparser class to handle a label/name
+        name_parser = pyparsing.Word(pyparsing.alphanums + '_')
+
+        # Parser to ignore the rest of line (or whole line)
+        ignore_text = pyparsing.Suppress(pyparsing.restOfLine + pyparsing.lineEnd())
+
+        # A VLAN match is any line that begins with an integer, followed by a parser name, then text to ignore
+        vlan_line = pyparsing.LineStart() + int_parser('vlan_id') + name_parser('vlan_name') + ignore_text
+
+        # We parse the sh vlan brief output by matching either vlan_line or ignore_text
+        vlan_parser = vlan_line | ignore_text
+
+        # Create list of all dictionaries matched in captured output. If a line does NOT contain VLAN information, the list entry will be an empty dictionary.
+        parsed_output = [vlan_parser.parse_string(line).as_dict() for line in sh_vlan_brief.splitlines()]
+
+        return '\n'.join([configs for vlan in parsed_output
+                          if len(vlan) > 0 and vlan['vlan_id'] > 1 and (vlan['vlan_id'] < 1002 or vlan['vlan_id'] > 1005)
+                          for configs in (f'vlan {vlan['vlan_id']}', f'name {vlan['vlan_name']}')
+                          ]) + '\n'
+
+    @staticmethod
+    def _insert_no_shutdowns(sh_run: str) -> str:
+        """
+        Take a captured "show run" output and convert it into a configuration that can be re-uploaded. We need to do this as the "show run" output only shows
+        "shutdown" interfaces, whereas if the device has everything shutdown by default, uploading captured text will not enable the interface. Inserting a
+        "no shutdown" before any relevant "shutdown" statement will result in a proper upload.
+
+        1) Delete all text before the first "!" in the captured output.
+        2) Insert "no shutdown" at start of each interface definition block
+        3) Remove last line of capture which contains the router prompt
+
+        :param sh_run: Captured "show run" output as a string
+        :return: String containing the modified configuration that can be re-uploaded.
+        """
+        # Regular expression to find the first '!' in the captured "show run", if one not found, this is a problem
+        find_start_config = re.search(r'^.*!.*$', sh_run, flags=re.MULTILINE)
+        assert find_start_config is not None, 'Captured "show run" does not contain an "!"'
+
+        # Regular expression to find all lines in multi-line string that begin with the text "interface "
+        regex = re.compile('^interface .*$', re.MULTILINE)
+
+        # Use regular expression to insert " no shutdown" after all matches in the text starting with the first "!", then use rsplit to delete the last line of
+        # captured text which is the device prompt
+        return regex.sub(r'\g<0>\n' + ' no shutdown', re.sub(r'^!', '', sh_run[find_start_config.start() - 1:])).rsplit('\n', 1)[0]
 
     ##########
     # PUBLIC METHODS
@@ -214,6 +282,48 @@ class DeviceManager(multiprocessing.Process):
         self._send_commands(self.__manage['restart'])
         self.__update_queue.put({'task': DeviceActionCompleteEnum.RESTARTED, 'message': f'{self.description} - Restarted'})
 
+    def backup(self) -> None:
+        """
+        Runs a backup of the device, storing the saved configuration in the shared string c char array so that the primary process can retrieve after backup
+        completed.
+
+        NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
+        """
+        self.__log.info(f'({self.description}) Backing up configuration')
+
+        config: str = ''
+
+        for command in self.__manage['backup']:
+            self.__log.info(f'({self.description}) Collecting output of command "{command}"')
+            capture = self.__device.capture_command(command, strip_excess_bangs=command in ['show run', 'sh run', 'sho run'])
+
+            if command in ['show run', 'sh run', 'sho run']:
+                self.__log.info(f'({self.description}) Inserting "no shutdown" at start of each interface definition block')
+                config += DeviceManager._insert_no_shutdowns(capture)
+
+            if command in ['show vlan brief', 'sh vlan brief', 'sh vlan br']:
+                self.__log.info(f'({self.description}) Inserting "no shutdown" at start of each interface definition block')
+                config += DeviceManager._sh_vlan_brief_to_commands(capture)
+
+        self.__log.info(f'({self.description}) Storing configuration for later access')
+        self.__config[:len(config)] = config.encode('utf-8')
+
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.BACKUP, 'message': f'{self.description} - Configuration backed up'})
+
+    def restore(self, command_list: list[str] = []) -> None:
+        """
+        Restores a configuration to the device. The configuration commands to upload are provided as multiple strings in command_list.
+
+        NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
+
+        :param command_list: List of configuration commands to enter into device in "configuration mode"
+        """
+        self.__log.info(f'({self.description}) Restoring backed-up configuration')
+
+        self.__device.upload_config(command_list)
+
+        self.__update_queue.put({'task': DeviceActionCompleteEnum.RESTORE, 'message': f'{self.description} - Restored configuration'})
+
     def run(self) -> None:
         """
         Method to be run in the sub-process
@@ -258,3 +368,13 @@ class DeviceManager(multiprocessing.Process):
         result = DeviceManager(self.__device, self.__type, self.description, self.full_description, self.__update_queue, self.__log_queue, self.__usernames, self.__passwords)
         for action, params in self.__actions.items(): result.register_action(action, *params['args'], **params['kwargs'])
         return result
+
+    @property
+    def config(self) -> str:
+        """
+        Returns the device configuration stored in the shared string c char array. Extract from array and convert to string for returning.
+
+        :return: String stored in self.__config
+        """
+        raw = bytes(self.__config[:]).split(b'\x00', 1)[0]
+        return raw.decode('utf-8', errors='strict')
