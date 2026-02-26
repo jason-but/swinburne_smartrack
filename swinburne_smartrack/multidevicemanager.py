@@ -220,6 +220,7 @@ class MultiDeviceManager:
             # Print successful outcomes
             self.__console.print()
             self.__console.print(f' :crying_face: [bold red]No devices were successfully {action}{'d' if action[-1] == 'e' else 'ed'}' if successful == 0 else f' :thumbs_up: [bold green]{successful} devices were successfully {action}{'d' if action[-1] == 'e' else 'ed'}')
+
             self.__console.print()
 
             # If any processes were unsuccessful

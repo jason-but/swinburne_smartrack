@@ -144,7 +144,7 @@ class DeviceManager(multiprocessing.Process):
         int_parser.setParseAction(lambda x: int(x[0]))
 
         # pyparser class to handle a label/name
-        name_parser = pyparsing.Word(pyparsing.alphanums + '_')
+        name_parser = pyparsing.Word(pyparsing.printables)
 
         # Parser to ignore the rest of line (or whole line)
         ignore_text = pyparsing.Suppress(pyparsing.restOfLine + pyparsing.lineEnd())
@@ -177,16 +177,18 @@ class DeviceManager(multiprocessing.Process):
         :param sh_run: Captured "show run" output as a string
         :return: String containing the modified configuration that can be re-uploaded.
         """
-        # Regular expression to find the first '!' in the captured "show run", if one not found, this is a problem
-        find_start_config = re.search(r'^.*!.*$', sh_run, flags=re.MULTILINE)
-        assert find_start_config is not None, 'Captured "show run" does not contain an "!"'
+        # Find the first '!' in the captured show_run, everything before this is not a configuration item
+        start_config = sh_run.index('!')
+        # Find the last 'end' beginning at the start of a line, this line (end) is not part of the configuration but the command to exit config mode
+        end_config = sh_run.rindex('\nend') + 1
 
         # Regular expression to find all lines in multi-line string that begin with the text "interface "
         regex = re.compile('^interface .*$', re.MULTILINE)
 
-        # Use regular expression to insert " no shutdown" after all matches in the text starting with the first "!", then use rsplit to delete the last line of
-        # captured text which is the device prompt
-        return regex.sub(r'\g<0>\n' + ' no shutdown', re.sub(r'^!', '', sh_run[find_start_config.start() - 1:])).rsplit('\n', 1)[0]
+        # Use regular expression to insert " no shutdown" after all matches in the text starting with the first "!" up to and including the last line of the actual config
+#        return regex.sub(r'\g<0>\n' + ' no shutdown', re.sub(r'^!', '', sh_run[find_start_config.start() - 1:])).rsplit('\n', 1)[0]
+        # Use regular expression to insert " no shutdown" after all matches in the text starting and ending with start_config->end_config
+        return regex.sub(r'\g<0>\n' + ' no shutdown', re.sub(r'^!', '', sh_run[start_config:end_config]))
 
     ##########
     # PUBLIC METHODS
@@ -310,17 +312,55 @@ class DeviceManager(multiprocessing.Process):
 
         self.__update_queue.put({'task': DeviceActionCompleteEnum.BACKUP, 'message': f'{self.description} - Configuration backed up'})
 
-    def restore(self, command_list: list[str] = []) -> None:
+    def restore(self, config_list: list[str] = []) -> None:
         """
         Restores a configuration to the device. The configuration commands to upload are provided as multiple strings in command_list.
 
+        We cannot just upload config_list to the device. upload_config() will send each config_list item one line at a time, waiting for the device prompt
+        before sending the next. This will work for all config items except a multi-line MOTD, where the device will display no prompt until the MOTD is
+        closed. We need to collapse all lines related to the MOTD to a single entry in the configuration list which contains '\r\n' to preserve the line
+        breaks.
+
+        Cisco "sh run", outputs the MOTD as "banner motd ^C ...message... ^C". We do not want to send two characters, so we replace all instances of '^C' in the
+        MOTD strings with a '|' (hopefully no student will use this character)
+
         NOTE: This method should not be called directly, it should be registered as an action using the register_action method.
 
-        :param command_list: List of configuration commands to enter into device in "configuration mode"
+        :param config_list: List of configuration commands to enter into device in "configuration mode"
         """
         self.__log.info(f'({self.description}) Restoring backed-up configuration')
 
-        self.__device.upload_config(command_list)
+        # Create a new list of configuration items to send where multi-line MOTD settings are collapsed into a single line
+        configs_to_send: list[str] = []
+
+        config_iter = iter(config_list)
+        for config_line in config_iter:
+            if not config_line.startswith('banner motd ^C'):
+                # This is a normal - non MOTD - line in the configuration, append config_line to the configs_to_send and loop to the next line
+                configs_to_send.append(config_line)
+                continue
+
+            if config_line.count('^C') == 2:
+                # This is a single-line MOTD banner, append config_line (replacing all '^C' with '|') to the configs_to_send and loop to the next line
+                configs_to_send.append(config_line.replace('^C', '|'))
+                continue
+
+            # We have hit a multi-line MOTD, need to collapse all lines (until we see another line ending with '^C')
+            motd: list[str] = []  # Initialise empty list to hold the MOTD
+
+            # Loop through config lines, appending each one (starting with the current) EXCEPT for the first line that ends with '^C'
+            while not config_line.endswith('^C') or len(motd) == 0:
+                # Append config_line to motd. IF this is the first line in the multi-line MOTD, replace the first '^C' with a '|'
+                motd.append(config_line if len(motd) else config_line.replace('^C', '|', 1))
+                config_line = next(config_iter)
+
+            # Append MOTD closing config line, replacing last two characters ('^C') with a '|'
+            motd.append(config_line[:-2] + '|')
+
+            # Append the MOTD to the result and loop to the next line
+            configs_to_send.append('\n'.join(motd))
+
+        self.__device.upload_config(configs_to_send)
 
         self.__update_queue.put({'task': DeviceActionCompleteEnum.RESTORE, 'message': f'{self.description} - Restored configuration'})
 
